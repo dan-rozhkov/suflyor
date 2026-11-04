@@ -1,0 +1,29 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--base);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* Draggable strip under the hiddenInset title bar. Interactive children need `-webkit-app-region: no-drag`. */
+.titlebar-drag {
+  height: var(--titlebar-h);
+  -webkit-app-region: drag;
+}
