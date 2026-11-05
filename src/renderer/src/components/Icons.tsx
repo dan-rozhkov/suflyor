@@ -23,3 +23,18 @@ export const StopIcon = () => (<Svg name="Stop"><rect x="2.75" y="2.75" width="1
 export const ChevronIcon = () => (<Svg name="CaretDown"><path d="M4 6l4 4 4-4" /></Svg>)
 export const AlertIcon = () => (<Svg name="WarningCircle"><circle cx="8" cy="8" r="6" /><path d="M8 4.75v3.5M8 11v.01" /></Svg>)
 export const RefreshIcon = () => (<Svg name="ArrowClockwise"><path d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M11.7 1.8v2.5H9.2" /></Svg>)
+const MicBody = () => (
+  <>
+    <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25" />
+    <path d="M3.25 7.75a4.75 4.75 0 0 0 9.5 0M8 12.5v1.75M5.5 14.25h5" />
+  </>
+)
+export const MicIcon = () => (<Svg name="Microphone"><MicBody /></Svg>)
+/** Only shown on the light muted button, so the gap under the slash is that button's colour. */
+export const MicOffIcon = () => (
+  <Svg name="MicrophoneSlash">
+    <MicBody />
+    <path d="M2.75 2.75l10.5 10.5" stroke="var(--on-base)" strokeWidth="4" />
+    <path d="M2.75 2.75l10.5 10.5" />
+  </Svg>
+)

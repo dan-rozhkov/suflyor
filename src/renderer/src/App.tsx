@@ -94,6 +94,7 @@ export function App() {
             onStart={a.start}
             onStop={a.stop}
             onSuggest={a.requestSuggestion}
+            mic={status.demo || !settings.micEnabled ? undefined : { on: !a.mic.muted && (a.mic.active || a.mic.starting), pending: a.micPending, onToggle: a.toggleMic }}
           />
           <AnimatePresence>
             {dragging && (

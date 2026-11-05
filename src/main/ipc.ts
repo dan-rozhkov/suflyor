@@ -100,13 +100,14 @@ export async function registerIpc(getWindow: () => BrowserWindow | null, applyAl
   const micHelper = createAudioHelper({
     path: helperPath(app.isPackaged, app.getAppPath(), process.resourcesPath),
     args: ['--mic'],
+    onStarted: () => mic.helperStarted(),
     onChunk: (b) => micSession.pushAudio(b),
     onError: (e) => mic.reportError(e)
   })
   const micFeed = createMicFeed({ conversation, onMine: (u) => suggestions.onMyUtterance(u) })
   const micSession = createSession({
     sink: {
-      status: () => {},
+      status: (s) => mic.sessionState(s.state),
       utterance: (u) => micFeed.sink(u),
       error: (e) => mic.reportError(e)
     },
@@ -144,6 +145,7 @@ export async function registerIpc(getWindow: () => BrowserWindow | null, applyAl
         return micSession.stop()
       }
     },
+    onStatus: (st) => send(IPC.micStatus, st),
     notify: (e) => send(IPC.appError, e)
   })
 
@@ -165,6 +167,7 @@ export async function registerIpc(getWindow: () => BrowserWindow | null, applyAl
     // A stop may have been queued behind this start: only spawn the helper if the session is still running.
     if (!demo && isMainRunning()) {
       helper.start()
+      mic.resetMute() // mute is per call
       // Not awaited: the permission prompt must never hold up translation.
       void mic.start()
     }
@@ -176,6 +179,8 @@ export async function registerIpc(getWindow: () => BrowserWindow | null, applyAl
     mic.stop()
     return session.stop()
   })
+  ipcMain.handle(IPC.micGetStatus, () => mic.getStatus())
+  ipcMain.handle(IPC.micSetMuted, (_e, muted: unknown) => (demo ? mic.getStatus() : mic.setMuted(muted === true)))
   ipcMain.handle(IPC.sessionGetStatus, () => session.getStatus())
   ipcMain.handle(IPC.suggestionsRequest, () => suggestions.request('manual'))
 

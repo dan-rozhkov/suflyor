@@ -37,6 +37,18 @@ export interface SessionStatus {
   error?: AppError
 }
 
+/**
+ * The microphone's real state for the current call, not the Settings switch.
+ * - active: really capturing (helper started and mic session listening).
+ * - starting: permission prompt, connecting or reconnecting; not capturing yet.
+ * - muted: the user muted the mic for this call (kept in main, reset on every session start, never saved).
+ */
+export interface MicStatus {
+  active: boolean
+  starting: boolean
+  muted: boolean
+}
+
 export type AppErrorCode =
   | 'no-keys' // a required API key is missing
   | 'no-screen-permission' // macOS screen/system audio recording not granted

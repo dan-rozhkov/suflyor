@@ -35,6 +35,11 @@ const api: SuflyorApi = {
     loadDropped: (file) => ipcRenderer.invoke(IPC.contextLoadPath, webUtils.getPathForFile(file)),
     clear: () => ipcRenderer.invoke(IPC.contextClear)
   },
+  mic: {
+    getStatus: () => ipcRenderer.invoke(IPC.micGetStatus),
+    setMuted: (muted) => ipcRenderer.invoke(IPC.micSetMuted, muted),
+    onStatus: (cb) => on(IPC.micStatus, cb)
+  },
   system: {
     openScreenRecordingSettings: () => ipcRenderer.invoke(IPC.systemOpenScreenSettings),
     openMicrophoneSettings: () => ipcRenderer.invoke(IPC.systemOpenMicSettings)

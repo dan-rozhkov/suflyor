@@ -81,8 +81,17 @@ span.outline-pill .outline-main { padding: 0 4px 0 14px; }
 .start:hover { opacity: 0.9; }
 .bar :focus-visible { outline-color: rgba(255, 255, 255, 0.6); }
 .bar-live { flex: 1; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
-.bar-round { justify-self: start; width: 52px; height: 52px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--on-base-control); color: var(--on-base); transition: opacity var(--duration-fast) var(--ease); }
+.bar-round { width: 52px; height: 52px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--on-base-control); color: var(--on-base); transition: opacity var(--duration-fast) var(--ease); }
 .bar-round svg, .stop svg { width: 22px; height: 22px; stroke-width: 1.5; }
+/* Left group: suggest and mic. The 8px gap is the only thing that gives; the buttons stay 52px. At the 360px minimum window
+   the bar is 328px wide, and both side columns must stay at least 112px (52 + 8 + 52) so the timer stays centred,
+   which leaves 104px for the timer, enough for 1:00:00. */
+.bar-group { justify-self: start; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.mic-glyph { display: grid; place-items: center; }
+/* Muted: light filled button with the dark slashed glyph, like .start. Not red, Stop is the only red control. */
+.bar-round-off { background: var(--on-base); color: var(--base); }
+.bar-round-off:hover:not([aria-disabled="true"]) { opacity: 0.9; }
+.bar-round[aria-disabled="true"] { opacity: 0.7; }
 .bar-round:disabled { opacity: 0.4; }
 .spark { display: grid; place-items: center; }
 .spark-live { animation: spin 1.6s linear infinite; }

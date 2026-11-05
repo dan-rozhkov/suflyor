@@ -8,6 +8,8 @@ export function useSuflyor() {
   const [s, setS] = useState<ScreenState>(fixture ?? FIXTURES.empty)
   const patch = useCallback((p: Partial<ScreenState>) => setS((prev) => ({ ...prev, ...p })), [])
   const busy = useRef(false)
+  const [micPending, setMicPending] = useState(false)
+  const micBusy = useRef(false)
 
   useEffect(() => {
     if (fixture) return
@@ -15,11 +17,13 @@ export function useSuflyor() {
     let alive = true
     api.session.getStatus().then((status) => alive && patch({ status })).catch(() => {})
     api.settings.get().then((settings) => alive && patch({ settings })).catch(() => {})
+    api.mic.getStatus().then((mic) => alive && patch({ mic })).catch(() => {})
     api.context.get().then((r) => alive && r.ok && patch({ context: r.context })).catch(() => {})
     const offs = [
       api.session.onStatus((status) => setS((p) => ({ ...p, status, error: errorAfterStatus(p.error, status) }))),
       api.transcript.onUtterance((u) => setS((p) => ({ ...p, utterances: upsertUtterance(p.utterances, u), suggestion: staleAfter(p.suggestion, u) }))),
       api.suggestions.onUpdate((sg) => setS((p) => ({ ...p, suggestion: upsertSuggestion(p.suggestion, sg) }))),
+      api.mic.onStatus((mic) => setS((p) => ({ ...p, mic }))),
       api.onError((error) => setS((p) => ({ ...p, error })))
     ]
     return () => {
@@ -96,6 +100,27 @@ export function useSuflyor() {
     [fixture, s.settings, patch]
   )
 
+  // Per-call mute, kept in main and never saved. Shown on (capturing or connecting, not muted) -> mute, which also cancels a
+  // start in flight. Shown off -> unmute, which retries after a failure. Pending lasts only for the round trip.
+  const toggleMic = useCallback(async () => {
+    if (micBusy.current) return
+    const mute = s.mic.muted ? false : s.mic.active || s.mic.starting
+    if (fixture) {
+      patch({ mic: mute ? { active: false, starting: false, muted: true } : { active: true, starting: false, muted: false } })
+      return
+    }
+    micBusy.current = true
+    setMicPending(true)
+    try {
+      patch({ mic: await window.suflyor.mic.setMuted(mute) })
+    } catch {
+      patch({ error: { code: 'unknown', message: "Couldn't change the microphone. Try again." } })
+    } finally {
+      micBusy.current = false
+      setMicPending(false)
+    }
+  }, [s.mic, fixture, patch])
+
   const openPermissionSettings = useCallback(() => {
     if (!fixture) void window.suflyor.system.openScreenRecordingSettings()
   }, [fixture])
@@ -107,8 +132,9 @@ export function useSuflyor() {
 
   return {
     ...s,
+    micPending,
     setSettingsOpen: (settingsOpen: boolean) => patch({ settingsOpen }),
     dismissError: () => patch({ error: null }),
-    start, stop, requestSuggestion, pickContext, clearContext, dropContext, saveSettings, openPermissionSettings, openMicSettings
+    start, stop, requestSuggestion, pickContext, clearContext, dropContext, saveSettings, toggleMic, openPermissionSettings, openMicSettings
   }
 }

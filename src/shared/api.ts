@@ -4,6 +4,7 @@ import type {
   SessionStatus,
   SettingsPatch,
   SettingsResult,
+  MicStatus,
   Suggestion,
   Utterance
 } from './types'
@@ -41,6 +42,14 @@ export interface SuflyorApi {
     /** For drag and drop: resolves the dropped File's path in preload and loads it. */
     loadDropped(file: File): Promise<ContextResult>
     clear(): Promise<ContextResult>
+  }
+  mic: {
+    /** Current state, for a renderer that loaded after the mic started. */
+    getStatus(): Promise<MicStatus>
+    /** Per-call mute, never saved to settings. Always resolves with the resulting status. Unmuting retries after a failure. */
+    setMuted(muted: boolean): Promise<MicStatus>
+    /** Fires whenever the mic parts start or stop, including a failed start. */
+    onStatus(cb: (status: MicStatus) => void): Unsubscribe
   }
   system: {
     /** Opens System Settings > Privacy & Security > Screen & System Audio Recording. */

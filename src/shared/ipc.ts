@@ -11,6 +11,8 @@ export const IPC = {
   contextPick: 'context:pick',
   contextLoadPath: 'context:load-path',
   contextClear: 'context:clear',
+  micGetStatus: 'mic:get-status',
+  micSetMuted: 'mic:set-muted',
   systemOpenScreenSettings: 'system:open-screen-settings',
   systemOpenMicSettings: 'system:open-mic-settings',
 
@@ -18,6 +20,7 @@ export const IPC = {
   sessionStatus: 'session:status',
   utteranceUpdate: 'utterance:update',
   suggestionUpdate: 'suggestion:update',
+  micStatus: 'mic:status',
   appError: 'app:error'
 } as const
 

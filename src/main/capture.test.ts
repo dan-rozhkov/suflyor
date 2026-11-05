@@ -91,6 +91,18 @@ describe('audio helper', () => {
     expect(s.kills).toEqual(['SIGTERM'])
   })
 
+  it('calls onStarted for the helper started event, once per run, and not after stop', () => {
+    const f = fake()
+    let started = 0
+    const h = createAudioHelper({ path: '/x', spawn: (() => f.c) as unknown as SpawnFn, onChunk: () => {}, onError: () => {}, onStarted: () => started++ })
+    h.start()
+    ;(f.c.stderr as PassThrough).write('{"event":"started"}\n')
+    expect(started).toBe(1)
+    h.stop()
+    ;(f.c.stderr as PassThrough).write('{"event":"started"}\n')
+    expect(started).toBe(1)
+  })
+
   it('reports an unexpected exit as audio error', () => {
     const s = setup()
     s.h.start()

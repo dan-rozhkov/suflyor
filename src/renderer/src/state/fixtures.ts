@@ -1,4 +1,4 @@
-import type { AppError, ContextFile, SessionStatus, SettingsView, Suggestion, Utterance } from '@shared/types'
+import type { AppError, ContextFile, MicStatus, SessionStatus, SettingsView, Suggestion, Utterance } from '@shared/types'
 
 export interface ScreenState {
   status: SessionStatus
@@ -8,6 +8,8 @@ export interface ScreenState {
   suggestion: Suggestion | null
   error: AppError | null
   settingsOpen: boolean
+  /** The microphone's real state for this call (not the Settings switch). */
+  mic: MicStatus
 }
 
 const keysOk = { soniox: true, opencode: true }
@@ -42,16 +44,18 @@ const monologue: Utterance[] = [
   }
 ]
 
+const micIdle: MicStatus = { active: false, starting: false, muted: false }
+const micOn: MicStatus = { active: true, starting: false, muted: false }
 const idle: SessionStatus = { state: 'idle', demo: false }
 const listening: SessionStatus = { state: 'listening', demo: false }
 const ctx: ContextFile = { name: 'interview-notes.md', path: '/tmp/interview-notes.md', size: 4200 }
 
-const empty: ScreenState = { status: idle, settings: baseSettings, context: null, utterances: [], suggestion: null, error: null, settingsOpen: false }
+const empty: ScreenState = { status: idle, settings: baseSettings, context: null, utterances: [], suggestion: null, error: null, settingsOpen: false, mic: micIdle }
 
 export const FIXTURES: Record<string, ScreenState> = {
   empty,
   listening: { ...empty, status: listening },
-  thinking: { ...empty, status: listening, context: ctx, utterances: utterances.slice(0, 2), suggestion: { ...suggestion, status: 'streaming', options: [], meaningRu: '' } },
+  thinking: { ...empty, status: listening, mic: micOn, context: ctx, utterances: utterances.slice(0, 2), suggestion: { ...suggestion, status: 'streaming', options: [], meaningRu: '' } },
   'no-keys': { ...empty, settings: { ...baseSettings, keys: { soniox: false, opencode: false } } },
   'no-permission': {
     ...empty,
@@ -66,14 +70,15 @@ export const FIXTURES: Record<string, ScreenState> = {
   },
   error: {
     ...empty,
-    status: listening,
+    status: listening, mic: micOn,
     context: ctx,
     utterances: utterances.slice(0, 2),
     error: { code: 'api', message: 'Too many OpenCode requests. Try again soon.' }
   },
   settings: { ...empty, settingsOpen: true, settings: { ...baseSettings, keys: { soniox: true, opencode: false } } },
-  monologue: { ...empty, status: listening, context: ctx, utterances: monologue, suggestion: { ...suggestion, utteranceId: 'm2' } },
-  live: { ...empty, status: listening, context: ctx, utterances, suggestion }
+  monologue: { ...empty, status: listening, mic: micOn, context: ctx, utterances: monologue, suggestion: { ...suggestion, utteranceId: 'm2' } },
+  live: { ...empty, status: listening, mic: micOn, context: ctx, utterances, suggestion },
+  'mic-off': { ...empty, status: listening, mic: { ...micOn, muted: true }, context: ctx, utterances, suggestion }
 }
 
 /** Dev-only: `#state=<name>` renders fixture data without calling main. */

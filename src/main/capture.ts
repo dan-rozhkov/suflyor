@@ -86,6 +86,8 @@ export type SpawnFn = (path: string, args: string[]) => Child
 export interface HelperDeps {
   path: string
   onChunk(chunk: Buffer): void
+  /** The helper printed its `started` event: audio is flowing. Ignored for a stopped run. */
+  onStarted?(): void
   /** Called at most once per run; the helper is already stopped when it fires. */
   onError(error: AppError): void
   spawn?: SpawnFn
@@ -147,7 +149,8 @@ export function createAudioHelper(deps: HelperDeps): AudioHelper {
       if (child === c) deps.onChunk(b)
     })
     const lines = createLineParser((e) => {
-      if (e.event === 'error') fail(mapHelperError(e, mic))
+      if (e.event === 'started' && child === c && !failed) deps.onStarted?.()
+      else if (e.event === 'error') fail(mapHelperError(e, mic))
     })
     c.stdout.on('data', (d: Buffer) => chunker.push(d))
     c.stderr.setEncoding('utf8')

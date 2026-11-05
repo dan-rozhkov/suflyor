@@ -35,6 +35,7 @@ With the Microphone switch on (Settings, on by default), Suflyor also listens to
 - Without headphones the microphone also hears the speakers. An echo guard drops mic text that repeats what the other side said in the last 15 seconds.
 - Some echo can still get through, so headphones are recommended.
 - macOS asks for Microphone permission on first use. If you decline, translation keeps working and a notice says suggestions can't hear you. You can allow it later in System Settings, Privacy & Security, Microphone.
+- The Microphone switch in Settings turns the microphone on or off for all calls. During a call, the microphone button next to the suggest button mutes it for this call only: the mute is not saved, and the next call starts unmuted. The button shows the real state, so after a failure it shows off, and a click retries. It is hidden while the switch is off.
 - A microphone problem never stops translation: only the microphone part stops, with a notice.
 
 ## Privacy
