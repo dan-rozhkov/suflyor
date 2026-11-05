@@ -10,6 +10,7 @@ import { BAD_CODE_MESSAGE, fetchToken } from './token'
 import { loadContext, saveContext } from './context'
 import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
+import { rootIsShort } from './viewport'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -134,6 +135,17 @@ function logoIcon(): Node {
   return $<HTMLTemplateElement>('logo-icon').content.firstElementChild!.cloneNode(true)
 }
 document.querySelector('.brand')!.prepend(logoIcon())
+
+/* installed app height */
+
+function fitInstalledApp(): void {
+  const installed = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+  const portrait = matchMedia('(orientation: portrait)').matches
+  const short = installed && portrait && rootIsShort(screen.height, appEl.getBoundingClientRect().height)
+  document.documentElement.classList.toggle('root-short', short)
+}
+fitInstalledApp()
+window.addEventListener('orientationchange', () => window.setTimeout(fitInstalledApp, 300))
 
 /* access code */
 
