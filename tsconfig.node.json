@@ -14,5 +14,5 @@
     "noUnusedLocals": true,
     "paths": { "@shared/*": ["./src/shared/*"] }
   },
-  "include": ["electron.vite.config.ts", "vitest.config.mts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+  "include": ["electron.vite.config.ts", "vitest.config.mts", "src/extension/vite.config.mts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
 }

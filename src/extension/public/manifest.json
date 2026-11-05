@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Suflyor",
+  "version": "0.1.0",
+  "description": "Live EN to RU translation of a browser tab (prototype).",
+  "minimum_chrome_version": "116",
+  "permissions": ["tabCapture", "sidePanel", "storage", "activeTab"],
+  "action": { "default_title": "Open Suflyor for this tab" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "background": { "service_worker": "background.js", "type": "module" }
+}

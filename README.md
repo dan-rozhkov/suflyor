@@ -39,6 +39,26 @@ With the Microphone switch on (Settings, on by default), Suflyor also listens to
 - The Microphone switch in Settings turns the microphone on or off for all calls. During a call, the microphone button next to the suggest button mutes it for this call only: the mute is not saved, and the next call starts unmuted. The button shows the real state, so after a failure it shows off, and a click retries. It is hidden while the switch is off.
 - A microphone problem never stops translation: only the microphone part stops, with a notice.
 
+## Chrome extension (prototype)
+
+A small Chrome extension that shows live EN to RU translation of one browser tab in the side panel. It is a test of tab audio capture, not a replacement for the app.
+
+```sh
+npm run build:extension
+```
+
+1. Open chrome://extensions, turn on Developer mode, click Load unpacked and pick `out/extension`.
+2. Open the call tab and click the Suflyor toolbar icon. The side panel opens.
+3. Paste your Soniox key and press Start.
+
+Limits:
+
+- Chrome only.
+- The key is held in memory. Chrome asks for it again after a browser restart.
+- Closing the panel stops capture.
+- No reconnect: if the connection drops, the session stops.
+- No reply suggestions and no microphone.
+
 ## Privacy
 
 Audio from the system and, if enabled, the microphone is sent to Soniox, and transcripts and your context file are sent to OpenCode. Transcripts are not saved to disk. Check your local rules on recording and your employer's policies before using it on a call.
