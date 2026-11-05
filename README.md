@@ -59,9 +59,34 @@ Limits:
 - No reconnect: if the connection drops, the session stops.
 - No reply suggestions and no microphone.
 
+## iPhone (prototype)
+
+A web page for iPhone Safari that listens to the phone microphone and shows live EN to RU translation. It is a test, not a replacement for the app.
+
+The page runs on a small Cloudflare Worker. The Worker keeps your Soniox key and hands the phone a key that works for 60 seconds, so the main key never reaches the phone. The Worker asks for an access code before it gives out a key.
+
+The access code must be at least 24 characters, or the Worker refuses every request. Make one with `openssl rand -hex 16` (32 characters).
+
+Deploy:
+
+```sh
+npx wrangler@4 secret put SONIOX_API_KEY --config src/mobile/wrangler.jsonc
+npx wrangler@4 secret put ACCESS_CODE --config src/mobile/wrangler.jsonc
+npm run deploy:mobile
+```
+
+Open `https://<your-worker>.workers.dev/#code=<your access code>` once on the phone. The page saves the code and removes it from the address. After that, open the plain address.
+
+Limits:
+
+- The screen must stay on and Safari must stay in front. Locking the phone stops the microphone.
+- The session stops when the phone locks or Safari goes to the background. Tap Start to continue: the text stays on the screen.
+- Anyone with the access code can spend your Soniox balance.
+- No reply suggestions.
+
 ## Privacy
 
-Audio from the system and, if enabled, the microphone is sent to Soniox, and transcripts and your context file are sent to OpenCode. Transcripts are not saved to disk. Check your local rules on recording and your employer's policies before using it on a call.
+Audio from the system and, if enabled, the microphone is sent to Soniox, and transcripts and your context file are sent to OpenCode. Transcripts are not saved to disk. The iPhone page sends microphone audio directly to Soniox. Check your local rules on recording and your employer's policies before using it on a call.
 
 The window asks macOS to exclude it from screen capture, but this is not guaranteed. Test it with your call app before sharing your screen.
 

@@ -4,3 +4,5 @@ dist
 .env
 .DS_Store
 resources/bin
+.dev.vars
+.wrangler

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#000000" />
+    <title>Suflyor</title>
+  </head>
+  <body>
+    <div class="app">
+      <main class="page">
+        <div id="status" class="toast" role="status" hidden>
+          <span class="toast-icon tone-red" id="status-icon" aria-hidden="true"></span>
+          <span class="toast-text" id="status-text"></span>
+        </div>
+        <form id="code-form" class="state code-form" hidden autocomplete="off">
+          <h1 class="state-title">Enter your access code.</h1>
+          <p class="state-text" id="code-error" hidden></p>
+          <input id="code" class="field" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Access code" aria-label="Access code" />
+          <button type="submit" class="pill">Continue</button>
+        </form>
+        <div class="feed-wrap" id="feed-wrap">
+          <div id="feed" class="feed" role="log" aria-label="Translation" aria-live="off" tabindex="0"></div>
+        </div>
+        <footer class="foot">
+          <span id="diag" class="diag">Audio: 0.0 s, peak 0.00</span>
+          <button id="forget" type="button" class="link">Forget code</button>
+        </footer>
+      </main>
+      <div class="bar" id="bar">
+        <div class="timer" id="timer" hidden>
+          <span class="wave wave-idle" id="wave" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="elapsed" aria-hidden="true">0:00</span>
+        </div>
+        <button id="toggle" type="button" class="start">Start</button>
+      </div>
+    </div>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>

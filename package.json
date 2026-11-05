@@ -8,9 +8,11 @@
     "dev": "npm run build:helper && electron-vite dev",
     "build": "npm run build:helper && electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.extension.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.extension.json && tsc --noEmit -p tsconfig.mobile.json",
     "test": "vitest run",
     "build:extension": "vite build --config src/extension/vite.config.mts",
+    "build:mobile": "vite build --config src/mobile/vite.config.mts",
+    "deploy:mobile": "npm run build:mobile && npx wrangler@4 deploy --config src/mobile/wrangler.jsonc",
     "build:helper": "mkdir -p resources/bin && swiftc -O -target arm64-apple-macos13.0 -swift-version 5 native/suflyor-audio.swift -o resources/bin/suflyor-audio"
   },
   "devDependencies": {
