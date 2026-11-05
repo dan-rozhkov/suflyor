@@ -1,5 +1,6 @@
 import { TokenAssembler, type SonioxToken } from './soniox-assembler'
 import type { Utterance } from './types'
+import type { SonioxContext } from './soniox-context'
 
 export type SonioxStatus = 'connecting' | 'listening' | 'stopping' | 'closed'
 
@@ -18,6 +19,8 @@ export interface SonioxClientOptions {
   onUtterances: (u: Utterance[]) => void
   onStatus: (s: SonioxStatus) => void
   onError: (message: string) => void
+  /** Names, terms and notes for the call. Sent in the start message when set. */
+  context?: SonioxContext
   WebSocketImpl?: new (url: string) => SocketLike
 }
 
@@ -86,7 +89,8 @@ export function createSonioxClient(opts: SonioxClientOptions): SonioxClient {
         num_channels: 1,
         language_hints: ['en'],
         enable_endpoint_detection: true,
-        translation: { type: 'one_way', target_language: 'ru' }
+        translation: { type: 'one_way', target_language: 'ru' },
+        ...(opts.context ? { context: opts.context } : {})
       })
     )
     onStatus('listening')

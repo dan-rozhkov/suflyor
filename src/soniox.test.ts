@@ -49,6 +49,16 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('soniox client', () => {
+  it('adds context to the start message only when given', () => {
+    const mk = (context?: { text: string }): Record<string, unknown> => {
+      createSonioxClient({ key: KEY, onUtterances: () => {}, onStatus: () => {}, onError: () => {}, context, WebSocketImpl: FakeSocket })
+      FakeSocket.last.open()
+      return JSON.parse(FakeSocket.last.sent[0] as string)
+    }
+    expect(mk({ text: 'We sell Nimbus.' }).context).toEqual({ text: 'We sell Nimbus.' })
+    expect('context' in mk()).toBe(false)
+  })
+
   it('drops audio before open, sends config first after open', () => {
     const { client, ws, events } = setup()
     expect(events.status).toEqual(['connecting'])

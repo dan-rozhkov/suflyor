@@ -17,6 +17,8 @@ export interface MicHandlers {
 
 export interface ClientHandlers {
   key: string
+  /** 0 for the first connection of a run, higher for each reconnect without a stable period. */
+  attempt: number
   onUtterances: (u: Utterance[]) => void
   onStatus: (s: SonioxStatus) => void
   onError: (message: string) => void
@@ -142,6 +144,7 @@ export function createSession(deps: SessionDeps): Session {
     const mine = (): boolean => run.gen === gen
     const client = deps.createClient({
       key,
+      attempt: run.attempt,
       // Final text from a client that is being stopped still counts.
       onUtterances: (u) => {
         if (mine()) deps.onUtterances(u)

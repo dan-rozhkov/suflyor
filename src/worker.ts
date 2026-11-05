@@ -1,8 +1,11 @@
 import { SONIOX_TEMP_KEY_URL } from './soniox-url'
+import { OPENCODE_CHAT_URL } from './opencode-url'
+import { buildMessages } from './suggest-prompt'
 
 export interface Env {
   SONIOX_API_KEY: string
   ACCESS_CODE: string
+  OPENCODE_API_KEY?: string
 }
 
 
@@ -55,10 +58,71 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
   }
 }
 
+const MAX_BODY_BYTES = 200 * 1024
+const MAX_LINES_IN = 200
+const MAX_LINE_CHARS = 2000
+const MAX_CONTEXT_IN = 120_000
+const SUGGEST_MODEL = 'deepseek-v4.1-flash'
+
+async function callOpenCode(key: string, messages: unknown, withReasoning: boolean): Promise<Response> {
+  return fetch(OPENCODE_CHAT_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: SUGGEST_MODEL,
+      messages,
+      stream: true,
+      max_tokens: 700,
+      temperature: 0.7,
+      ...(withReasoning ? { reasoning_effort: 'none' } : {})
+    })
+  })
+}
+
+async function handleSuggest(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'method-not-allowed' }, 405, { Allow: 'POST' })
+  if (!(await codeMatches(bearer(request), env.ACCESS_CODE))) return json({ error: 'bad-code' }, 401)
+  const key = env.OPENCODE_API_KEY
+  if (!key) return json({ error: 'no-suggest-key' }, 503)
+  const declared = Number(request.headers.get('Content-Length'))
+  if (declared > MAX_BODY_BYTES) return json({ error: 'too-large' }, 413)
+  const raw = await request.text()
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return json({ error: 'too-large' }, 413)
+  let lines: string[]
+  let context = ''
+  try {
+    const body = JSON.parse(raw) as { lines?: unknown; context?: unknown }
+    if (!body || !Array.isArray(body.lines) || !body.lines.every((l) => typeof l === 'string')) throw new Error('lines')
+    lines = body.lines as string[]
+    if (typeof body.context === 'string') context = body.context
+    if (!lines.length || lines.length > MAX_LINES_IN || lines.some((l) => l.length > MAX_LINE_CHARS) || context.length > MAX_CONTEXT_IN) {
+      throw new Error('limits')
+    }
+  } catch {
+    return json({ error: 'bad-request' }, 400)
+  }
+  const messages = buildMessages(context, lines)
+  try {
+    let res = await callOpenCode(key, messages, true)
+    if (res.status === 400) {
+      void res.body?.cancel()
+      res = await callOpenCode(key, messages, false)
+    }
+    if (!res.ok || !res.body) {
+      void res.body?.cancel()
+      return json({ error: 'upstream' }, 502)
+    }
+    return new Response(res.body, { status: 200, headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' } })
+  } catch {
+    return json({ error: 'upstream' }, 502)
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url)
     if (pathname === '/api/token') return handleToken(request, env)
+    if (pathname === '/api/suggest') return handleSuggest(request, env)
     return json({ error: 'not-found' }, 404)
   }
 }

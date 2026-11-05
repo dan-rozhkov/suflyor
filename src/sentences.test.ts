@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countSentences, englishForHero, splitLast } from './sentences'
+import { countSentences, englishForHero, paragraphs, splitLast } from './sentences'
 
 describe('splitLast', () => {
   it('returns the whole text when there is no boundary', () => {
@@ -141,5 +141,40 @@ describe('englishForHero', () => {
   it('shows the last English sentence while Russian is empty', () => {
     expect(englishForHero('', en)).toBe('Four comes last in this long list')
     expect(englishForHero('', '')).toBe('')
+  })
+})
+
+describe('paragraphs', () => {
+  const long = 'Мы запустили новый тариф для небольших команд. Клиенты пока осторожничают и ждут отзывов. Что вы думаете об этом решении? Нам важно услышать ваше мнение до конца месяца. Потом мы решим, что делать дальше.'
+
+  it('keeps short text as one paragraph and handles empty text', () => {
+    expect(paragraphs('Коротко. Очень коротко.')).toEqual(['Коротко. Очень коротко.'])
+    expect(paragraphs('   ')).toEqual([])
+    expect(paragraphs('Без точки в конце')).toEqual(['Без точки в конце'])
+  })
+
+  it('closes a paragraph once it reaches 160 characters', () => {
+    const p = paragraphs(long)
+    expect(p.length).toBeGreaterThan(1)
+    for (const x of p.slice(0, -1)) expect(x.length).toBeGreaterThanOrEqual(160)
+    expect(p.join(' ')).toBe(long)
+  })
+
+  it('keeps earlier paragraphs stable while the text grows', () => {
+    let text = ''
+    let before: string[] = []
+    for (const s of long.split('. ')) {
+      text = text ? `${text} ${s}.` : `${s}.`
+      const now = paragraphs(text)
+      expect(now.slice(0, before.length - 1)).toEqual(before.slice(0, -1))
+      before = now
+    }
+    const a = paragraphs(long)
+    const b = paragraphs(long + ' More sentence.')
+    expect(b.slice(0, a.length - 1)).toEqual(a.slice(0, -1))
+  })
+
+  it('does not split on abbreviations', () => {
+    expect(paragraphs('Спросите д-ра Иванова, т. е. нашего врача, и г. Петрова. Dr. Smith and e.g. Mr. Jones agreed.')).toHaveLength(1)
   })
 })

@@ -14,23 +14,27 @@
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+  --space-6: 32px;
 
   --radius-sheet: 28px;
   --radius-pill: 999px;
 
 
   --duration-base: 200ms;
+  --duration-layout: 300ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
 
   /* The base and its controls stay dark in both themes. */
   --base: #000000;
   --on-base: #ffffff;
+  --on-base-control: #1f1f22;
   --stop: #e5191c;
 
   --sheet: #ffffff;
   --surface: #f3f3f2;
   --text: #0c0c0d;
   --text-muted: #6a6a71;
+  --line: rgba(0, 0, 0, 0.09);
   --focus-ring: rgba(12, 12, 13, 0.45);
   --red: #c92a2a;
   --toast-bg: #0c0c0d;
@@ -44,6 +48,7 @@
     --surface: #232327;
     --text: #ffffff;
     --text-muted: #a2a2aa;
+    --line: rgba(255, 255, 255, 0.1);
     --focus-ring: rgba(255, 255, 255, 0.5);
     --red: #ff6b6b;
     --toast-bg: #2c2c31;

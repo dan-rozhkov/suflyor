@@ -55,3 +55,28 @@ export function englishForHero(ru: string, en: string): string {
   if (starts.length <= skip) return splitLast(src).last
   return src.slice(starts[skip]).trim()
 }
+
+/** A paragraph is closed once it reaches this many characters. */
+export const PARAGRAPH_CHARS = 160
+
+/**
+ * Groups sentences into paragraphs, greedily from the start: a paragraph takes sentences until it reaches
+ * PARAGRAPH_CHARS. Earlier paragraphs stay the same while the text grows; only the last one changes.
+ */
+export function paragraphs(text: string): string[] {
+  const src = text.trim()
+  if (!src) return []
+  const starts = sentenceStarts(src)
+  const out: string[] = []
+  let current = ''
+  for (let i = 0; i < starts.length; i++) {
+    const sentence = src.slice(starts[i], starts[i + 1]).trim()
+    current = current ? `${current} ${sentence}` : sentence
+    if (current.length >= PARAGRAPH_CHARS) {
+      out.push(current)
+      current = ''
+    }
+  }
+  if (current) out.push(current)
+  return out
+}

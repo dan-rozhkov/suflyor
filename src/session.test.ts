@@ -129,6 +129,35 @@ describe('session', () => {
     expect(t.clients[0].sent.length).toBe(0)
   })
 
+  it('passes the attempt number to each client and resets it after a stable run', async () => {
+    const t = setup()
+    await t.session.start()
+    expect(t.clients[0].h.attempt).toBe(0)
+    for (let i = 0; i < 3; i++) {
+      t.clients[i].h.onStatus('closed')
+      await flush()
+      t.sleeps[i].resolve()
+      await flush()
+      expect(t.clients[i + 1].h.attempt).toBe(i + 1)
+    }
+    const t2 = setup()
+    await t2.session.start()
+    t2.clients[0].h.onStatus('listening')
+    t2.advance(31_000)
+    t2.clients[0].h.onStatus('closed')
+    await flush()
+    t2.sleeps[0].resolve()
+    await flush()
+    expect(t2.clients[1].h.attempt).toBe(1)
+    t2.clients[1].h.onStatus('listening')
+    t2.advance(31_000)
+    t2.clients[1].h.onStatus('closed')
+    await flush()
+    t2.sleeps[1].resolve()
+    await flush()
+    expect(t2.clients[2].h.attempt).toBe(1)
+  })
+
   it('gives up after 3 retries and releases the mic', async () => {
     const t = setup()
     await t.session.start()
