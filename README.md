@@ -27,9 +27,19 @@ To try the interface without keys or audio:
 SUFLYOR_DEMO=1 npm run dev
 ```
 
+## Microphone
+
+With the Microphone switch on (Settings, on by default), Suflyor also listens to your microphone while a session runs, so reply suggestions know what you already said. Your words appear in the suggestion prompt as `ME:` lines. They are not shown in the translation feed.
+
+- It is a second Soniox stream (transcription only, no translation), so audio cost doubles while a session runs. Turn the switch off to avoid it.
+- Without headphones the microphone also hears the speakers. An echo guard drops mic text that repeats what the other side said in the last 15 seconds.
+- Some echo can still get through, so headphones are recommended.
+- macOS asks for Microphone permission on first use. If you decline, translation keeps working and a notice says suggestions can't hear you. You can allow it later in System Settings, Privacy & Security, Microphone.
+- A microphone problem never stops translation: only the microphone part stops, with a notice.
+
 ## Privacy
 
-Audio is sent to Soniox, and transcripts and your context file are sent to OpenCode. Transcripts are not saved to disk. Check your local rules on recording and your employer's policies before using it on a call.
+Audio from the system and, if enabled, the microphone is sent to Soniox, and transcripts and your context file are sent to OpenCode. Transcripts are not saved to disk. Check your local rules on recording and your employer's policies before using it on a call.
 
 The window asks macOS to exclude it from screen capture, but this is not guaranteed. Test it with your call app before sharing your screen.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Suggestion } from '@shared/types'
-import { isExpectedFile, MAX_UTTERANCES, staleAfter, upsertUtterance } from './reducers'
+import type { AppError, SessionStatus, Suggestion } from '@shared/types'
+import { errorAfterStatus, isExpectedFile, MAX_UTTERANCES, staleAfter, upsertUtterance } from './reducers'
 
 describe('upsertUtterance', () => {
   it('appends new ids and updates existing in place', () => {
@@ -42,5 +42,17 @@ describe('staleAfter', () => {
   it('keeps a streaming request', () => {
     const live: Suggestion = { ...s, status: 'streaming' }
     expect(staleAfter(live, u('b', true))).toBe(live)
+  })
+})
+
+describe('errorAfterStatus', () => {
+  const st = (state: SessionStatus['state']): SessionStatus => ({ state, demo: false })
+  const err = (code: AppError['code']): AppError => ({ code, message: 'm' })
+  it('listening clears session errors but keeps mic notices', () => {
+    expect(errorAfterStatus(err('network'), st('listening'))).toBeNull()
+    expect(errorAfterStatus(err('mic'), st('listening'))?.code).toBe('mic')
+    expect(errorAfterStatus(err('no-mic-permission'), st('listening'))?.code).toBe('no-mic-permission')
+    expect(errorAfterStatus(err('network'), st('starting'))?.code).toBe('network')
+    expect(errorAfterStatus(null, st('listening'))).toBeNull()
   })
 })

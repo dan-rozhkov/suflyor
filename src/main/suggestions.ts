@@ -10,6 +10,8 @@ export const OPENCODE_URL = 'https://opencode.ai/inference/openai/v1/chat/comple
 export const AUTO_DEBOUNCE_MS = 1200
 /** No bytes from OpenCode for this long: the request fails with a 'network' error. */
 export const STREAM_IDLE_TIMEOUT_MS = 15_000
+/** The user's text must have at least this many words to cancel a suggestion. */
+export const MIN_MY_WORDS = 4
 const DEMO_DELAY_MS = 120
 
 export interface SuggestionsSink {
@@ -26,7 +28,7 @@ export interface SuggestionsDeps {
   isAutoEnabled(): boolean
   /** Markdown context text, '' if none. Treat as data. */
   getContextText(): string
-  /** Last utterances, oldest first. */
+  /** Last utterances, oldest first, with `speaker` set ('me' for the user). */
   getTranscript(): Utterance[]
   /** True when SUFLYOR_DEMO=1: emit fake suggestions, no network. */
   demo: boolean
@@ -39,6 +41,12 @@ export interface SuggestionsController {
   request(trigger?: SuggestionTrigger): Promise<void>
   /** Feed every utterance update. Final one + ~1.2 s pause triggers an auto request; any new utterance cancels in-flight. */
   onUtterance(utterance: Utterance): void
+  /**
+   * Feed the user's own (non-echo) microphone text from live speech. Only partials of 4+ words count: while the user
+   * speaks, a suggestion is stale:
+   * drops a pending debounce and an in-flight AUTO request, never a manual one. Never schedules a request.
+   */
+  onMyUtterance(utterance: Utterance): void
   /** Abort in-flight request and pending debounce (e.g. on session stop). */
   cancel(): void
   dispose(): void
@@ -240,7 +248,8 @@ export function createSuggestions(deps: SuggestionsDeps): SuggestionsController 
     const transcript = deps.getTranscript()
     // Auto requests without a key stay silent; the error is for manual presses only.
     if (trigger === 'auto' && !deps.demo && !deps.getApiKey()?.trim()) return
-    const finals = transcript.filter((u) => u.isFinal && u.en.trim())
+    // Replies answer the other side: ME lines are context only.
+    const finals = transcript.filter((u) => u.isFinal && u.en.trim() && u.speaker !== 'me')
     if (finals.length === 0) {
       if (trigger === 'manual') {
         deps.sink.error({ code: 'unknown', message: 'Nothing to reply to yet.' })
@@ -295,6 +304,13 @@ export function createSuggestions(deps: SuggestionsDeps): SuggestionsController 
         pendingFor = null
         if (deps.isAutoEnabled()) void request('auto')
       }, AUTO_DEBOUNCE_MS)
+    },
+    onMyUtterance(u) {
+      // Only live partials: a final means the user stopped talking and may land after a THEM final armed the debounce.
+      // Short stalling ("hmm, good question") does not make a suggestion stale either.
+      if (disposed || u.isFinal || u.en.trim().split(/\s+/).length < MIN_MY_WORDS) return
+      clearDebounce()
+      if (current && current.state.trigger === 'auto') abortInFlight()
     },
     cancel,
     dispose() {

@@ -167,6 +167,7 @@ export function SettingsDialog({ open, settings, onOpenChange, onSave, onHeight,
                   />
                 </Field.Root>
                 <ToggleRow label="Auto suggestions" checked={settings.autoSuggest} onChange={(v) => void save({ autoSuggest: v })} />
+                <ToggleRow label="Microphone" checked={settings.micEnabled} onChange={(v) => void save({ micEnabled: v })} />
                 <ToggleRow label="Always on top" checked={settings.alwaysOnTop} onChange={(v) => void save({ alwaysOnTop: v })} />
               </div>
               {err && <p className="sheet-error" role="alert">{err}</p>}

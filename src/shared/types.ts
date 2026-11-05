@@ -7,6 +7,8 @@ export interface Utterance {
   /** Russian translation (may be partial). */
   ru: string
   isFinal: boolean
+  /** Who spoke. Absent means 'them' (the other side). 'me' comes from the microphone and is never shown in the feed. */
+  speaker?: 'them' | 'me'
 }
 
 export type SuggestionTrigger = 'auto' | 'manual'
@@ -38,11 +40,13 @@ export interface SessionStatus {
 export type AppErrorCode =
   | 'no-keys' // a required API key is missing
   | 'no-screen-permission' // macOS screen/system audio recording not granted
+  | 'no-mic-permission' // macOS microphone access not granted
   | 'network' // connection lost / offline
   | 'api' // Soniox or OpenCode returned an error
   | 'context' // md context file problem (too large, unreadable, wrong type)
   | 'settings' // settings could not be saved (e.g. safeStorage unavailable)
   | 'audio' // capture / worklet failure
+  | 'mic' // the microphone part stopped; translation continues
   | 'unknown'
 
 export interface AppError {
@@ -59,6 +63,8 @@ export interface AppSettings {
   model: string
   autoSuggest: boolean
   alwaysOnTop: boolean
+  /** Capture the microphone so suggestions know what the user said. Second Soniox stream. */
+  micEnabled: boolean
 }
 
 /** What the renderer sees: settings plus whether each key is set. Key values never cross IPC to the renderer. */
@@ -90,7 +96,8 @@ export type ContextResult = { ok: true; context: ContextFile | null } | { ok: fa
 export const DEFAULT_SETTINGS: AppSettings = {
   model: 'deepseek-v4.1-flash',
   autoSuggest: true,
-  alwaysOnTop: true
+  alwaysOnTop: true,
+  micEnabled: true
 }
 
 export const MAX_CONTEXT_BYTES = 100 * 1024

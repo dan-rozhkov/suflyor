@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -24,7 +24,7 @@ describe('settings store', () => {
     const filePath = tmpFile()
     const s = createSettingsStore({ filePath, cipher: fakeCipher() })
     const view = s.update({ sonioxKey: 'sk-secret', model: 'm1' })
-    expect(view).toEqual({ model: 'm1', autoSuggest: true, alwaysOnTop: true, keys: { soniox: true, opencode: false } })
+    expect(view).toEqual({ model: 'm1', autoSuggest: true, alwaysOnTop: true, micEnabled: true, keys: { soniox: true, opencode: false } })
     expect(JSON.stringify(view)).not.toContain('sk-secret')
     expect(readFileSync(filePath, 'utf8')).not.toContain('sk-secret')
     expect(s.getKey('soniox')).toBe('sk-secret')
@@ -49,5 +49,14 @@ describe('settings store', () => {
     const filePath = tmpFile()
     createSettingsStore({ filePath, cipher: fakeCipher() }).setContextPath('/a/b.md')
     expect(createSettingsStore({ filePath, cipher: fakeCipher() }).getContextPath()).toBe('/a/b.md')
+  })
+
+  it('accepts an existing file without micEnabled (defaults to true) and keeps a saved false', () => {
+    const filePath = tmpFile()
+    writeFileSync(filePath, JSON.stringify({ settings: { model: 'm9', autoSuggest: false, alwaysOnTop: false }, keys: {}, contextPath: null }))
+    const s = createSettingsStore({ filePath, cipher: fakeCipher() })
+    expect(s.get()).toEqual({ model: 'm9', autoSuggest: false, alwaysOnTop: false, micEnabled: true })
+    s.update({ micEnabled: false })
+    expect(createSettingsStore({ filePath, cipher: fakeCipher() }).get().micEnabled).toBe(false)
   })
 })

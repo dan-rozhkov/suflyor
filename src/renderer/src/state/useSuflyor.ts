@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ContextResult, SettingsPatch, SettingsResult } from '@shared/types'
 import { FIXTURES, readFixture, type ScreenState } from './fixtures'
-import { isExpectedFile, staleAfter, upsertSuggestion, upsertUtterance } from './reducers'
+import { errorAfterStatus, isExpectedFile, staleAfter, upsertSuggestion, upsertUtterance } from './reducers'
 
 export function useSuflyor() {
   const [fixture] = useState(readFixture)
@@ -17,7 +17,7 @@ export function useSuflyor() {
     api.settings.get().then((settings) => alive && patch({ settings })).catch(() => {})
     api.context.get().then((r) => alive && r.ok && patch({ context: r.context })).catch(() => {})
     const offs = [
-      api.session.onStatus((status) => setS((p) => ({ ...p, status, error: status.state === 'listening' ? null : p.error }))),
+      api.session.onStatus((status) => setS((p) => ({ ...p, status, error: errorAfterStatus(p.error, status) }))),
       api.transcript.onUtterance((u) => setS((p) => ({ ...p, utterances: upsertUtterance(p.utterances, u), suggestion: staleAfter(p.suggestion, u) }))),
       api.suggestions.onUpdate((sg) => setS((p) => ({ ...p, suggestion: upsertSuggestion(p.suggestion, sg) }))),
       api.onError((error) => setS((p) => ({ ...p, error })))
@@ -100,10 +100,15 @@ export function useSuflyor() {
     if (!fixture) void window.suflyor.system.openScreenRecordingSettings()
   }, [fixture])
 
+  const openMicSettings = useCallback(() => {
+    if (!fixture) void window.suflyor.system.openMicrophoneSettings()
+    patch({ error: null })
+  }, [fixture, patch])
+
   return {
     ...s,
     setSettingsOpen: (settingsOpen: boolean) => patch({ settingsOpen }),
     dismissError: () => patch({ error: null }),
-    start, stop, requestSuggestion, pickContext, clearContext, dropContext, saveSettings, openPermissionSettings
+    start, stop, requestSuggestion, pickContext, clearContext, dropContext, saveSettings, openPermissionSettings, openMicSettings
   }
 }

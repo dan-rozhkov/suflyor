@@ -53,6 +53,12 @@ export interface SessionDeps {
   onUtterance(utterance: Utterance): void
   /** Markdown context text for Soniox `context`. Read on every connect. */
   getContextText?(): string
+  /** Translate to Russian. Default true. False: no `translation` in the config and no `translation_terms` in the context (transcription only). */
+  translate?: boolean
+  /** Reconnect flushes feed `onUtterance` (default true, the main stream). The mic stream sets false so a reconnect cannot cancel a suggestion. */
+  feedOnReconnect?: boolean
+  /** Prefix of the assembler's utterance ids (followed by a timestamp). Default 's'. Use another one for a second session. */
+  idPrefix?: string
   tuning?: SessionTuning
 }
 
@@ -76,7 +82,14 @@ const BYTES_PER_MS = 32 // 16000 Hz * 2 bytes
 const TRANSCRIPT_LIMIT = 30
 const KEEP_LIMIT = 200
 
-export function sonioxConfig(model: string, context?: SonioxContext): Record<string, unknown> {
+export function sonioxConfig(model: string, context?: SonioxContext, translate = true): Record<string, unknown> {
+  // translation_terms only applies to translation; leave it out when transcribing alone.
+  let ctx = context
+  if (ctx && !translate) {
+    const { translation_terms: _t, ...rest } = ctx
+    void _t
+    ctx = Object.keys(rest).length ? rest : undefined
+  }
   return {
     model,
     audio_format: 'pcm_s16le',
@@ -84,8 +97,8 @@ export function sonioxConfig(model: string, context?: SonioxContext): Record<str
     num_channels: 1,
     language_hints: ['en'],
     enable_endpoint_detection: true,
-    translation: { type: 'one_way', target_language: 'ru' },
-    ...(context ? { context } : {})
+    ...(translate ? { translation: { type: 'one_way', target_language: 'ru' } } : {}),
+    ...(ctx ? { context: ctx } : {})
   }
 }
 
@@ -147,6 +160,8 @@ export function createSession(deps: SessionDeps): SessionController {
   const bufferLimit = (tune.bufferMs ?? 5000) * BYTES_PER_MS
   const finishTimeoutMs = tune.finishTimeoutMs ?? 1500
   const stableMs = tune.stableMs ?? 3000
+  const translate = deps.translate ?? true
+  const idPrefix = deps.idPrefix ?? 's'
 
   let status: SessionStatus = { state: 'idle', demo: deps.demo }
   const order: string[] = []
@@ -239,7 +254,7 @@ export function createSession(deps: SessionDeps): SessionController {
   function scheduleReconnect(reason: AppError): void {
     if (stopRequested) return
     clearStable()
-    publish(assembler.flush())
+    publish(assembler.flush(), deps.feedOnReconnect ?? true)
     attempts += 1
     if (attempts > maxAttempts) {
       fail({ code: 'network', message: "Couldn't reach Soniox. Check your connection.", detail: reason.detail })
@@ -276,7 +291,7 @@ export function createSession(deps: SessionDeps): SessionController {
 
     sock.on('open', () => {
       if (myGen !== gen) return
-      sock.send(JSON.stringify(sonioxConfig(model, buildSonioxContext(deps.getContextText?.() ?? ''))))
+      sock.send(JSON.stringify(sonioxConfig(model, buildSonioxContext(deps.getContextText?.() ?? ''), translate)))
       wsOpen = true
       lastSend = Date.now()
       for (const b of buffered) sock.send(b)
@@ -435,7 +450,7 @@ export function createSession(deps: SessionDeps): SessionController {
         if (status.state !== 'idle' && status.state !== 'error') await teardown(false)
         stopRequested = false
         attempts = 0
-        assembler = new TokenAssembler(`s${Date.now().toString(36)}-`)
+        assembler = new TokenAssembler(`${idPrefix}${Date.now().toString(36)}-`)
         if (deps.demo) {
           setStatus({ state: 'listening', demo: true })
           runDemo()

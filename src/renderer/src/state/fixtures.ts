@@ -11,7 +11,7 @@ export interface ScreenState {
 }
 
 const keysOk = { soniox: true, opencode: true }
-const baseSettings: SettingsView = { model: 'deepseek-v4.1-flash', autoSuggest: true, alwaysOnTop: true, keys: keysOk }
+const baseSettings: SettingsView = { model: 'deepseek-v4.1-flash', autoSuggest: true, alwaysOnTop: true, micEnabled: true, keys: keysOk }
 
 const utterances: Utterance[] = [
   { id: 'u1', en: 'Thanks for joining. Before we start, can you walk me through your last project?', ru: 'Спасибо, что присоединились. Перед началом расскажите о вашем последнем проекте.', isFinal: true },

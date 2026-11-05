@@ -57,7 +57,10 @@ export function createLineParser(onEvent: (e: HelperEvent) => void) {
   }
 }
 
-export function mapHelperError(e: HelperEvent): AppError {
+export function mapHelperError(e: HelperEvent, mic = false): AppError {
+  const detail = e.code ? `${e.code}${e.message ? `: ${e.message}` : ''}` : e.message
+  // Mic mode: only the code matters, the toast text comes from mic.ts.
+  if (mic) return { code: e.code === 'no-mic-permission' ? 'no-mic-permission' : 'audio', message: 'Audio helper error.', detail }
   if (e.code === 'no-screen-permission') {
     return {
       code: 'no-screen-permission',
@@ -65,11 +68,11 @@ export function mapHelperError(e: HelperEvent): AppError {
       detail: e.message
     }
   }
-  return { code: 'audio', message: "Couldn't capture system audio.", detail: e.code ? `${e.code}${e.message ? `: ${e.message}` : ''}` : e.message }
+  return { code: 'audio', message: "Couldn't capture system audio.", detail }
 }
 
-export function exitError(code: number | null, signal: string | null): AppError {
-  return { code: 'audio', message: 'System audio capture stopped.', detail: `helper exit ${code ?? signal ?? '?'}` }
+export function exitError(code: number | null, signal: string | null, mic = false): AppError {
+  return { code: 'audio', message: mic ? 'Audio helper stopped.' : 'System audio capture stopped.', detail: `helper exit ${code ?? signal ?? '?'}` }
 }
 
 /** Dev: <project>/resources/bin. Packaged: <Resources>/bin (electron-builder extraResources, see package.json). */
@@ -78,7 +81,7 @@ export function helperPath(isPackaged: boolean, appPath: string, resourcesPath: 
 }
 
 type Child = ChildProcessByStdio<Writable, Readable, Readable>
-export type SpawnFn = (path: string) => Child
+export type SpawnFn = (path: string, args: string[]) => Child
 
 export interface HelperDeps {
   path: string
@@ -86,6 +89,8 @@ export interface HelperDeps {
   /** Called at most once per run; the helper is already stopped when it fires. */
   onError(error: AppError): void
   spawn?: SpawnFn
+  /** Extra helper arguments, e.g. ['--mic']. A '--mic' argument also selects the mic error mapping (codes only; mic.ts words the toast). */
+  args?: string[]
   /** How long to wait after SIGTERM before SIGKILL. */
   killAfterMs?: number
 }
@@ -97,8 +102,10 @@ export interface AudioHelper {
 }
 
 export function createAudioHelper(deps: HelperDeps): AudioHelper {
+  const args = deps.args ?? []
+  const mic = args.includes('--mic')
   const spawnFn: SpawnFn =
-    deps.spawn ?? ((p) => nodeSpawn(p, [], { stdio: ['pipe', 'pipe', 'pipe'] }) as unknown as Child)
+    deps.spawn ?? ((p, a) => nodeSpawn(p, a, { stdio: ['pipe', 'pipe', 'pipe'] }) as unknown as Child)
   const killAfterMs = deps.killAfterMs ?? 1500
   let child: Child | null = null
 
@@ -123,7 +130,7 @@ export function createAudioHelper(deps: HelperDeps): AudioHelper {
     if (child) return
     let c: Child
     try {
-      c = spawnFn(deps.path)
+      c = spawnFn(deps.path, args)
     } catch (e) {
       deps.onError({ code: 'audio', message: "Couldn't start audio capture.", detail: e instanceof Error ? e.message : undefined })
       return
@@ -140,7 +147,7 @@ export function createAudioHelper(deps: HelperDeps): AudioHelper {
       if (child === c) deps.onChunk(b)
     })
     const lines = createLineParser((e) => {
-      if (e.event === 'error') fail(mapHelperError(e))
+      if (e.event === 'error') fail(mapHelperError(e, mic))
     })
     c.stdout.on('data', (d: Buffer) => chunker.push(d))
     c.stderr.setEncoding('utf8')
@@ -149,7 +156,8 @@ export function createAudioHelper(deps: HelperDeps): AudioHelper {
     c.on('error', (e) =>
       fail({ code: 'audio', message: "Couldn't start audio capture.", detail: (e as NodeJS.ErrnoException).code ?? e.message })
     )
-    c.on('exit', (code, signal) => fail(exitError(code, signal)))
+    // 'close', not 'exit': stderr is drained first, so a last `error` line (e.g. no-mic-permission) wins over the exit code.
+    c.on('close', (code, signal) => fail(exitError(code, signal, mic)))
   }
 
   return { start, stop, isRunning: () => child !== null }

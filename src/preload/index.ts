@@ -36,7 +36,8 @@ const api: SuflyorApi = {
     clear: () => ipcRenderer.invoke(IPC.contextClear)
   },
   system: {
-    openScreenRecordingSettings: () => ipcRenderer.invoke(IPC.systemOpenScreenSettings)
+    openScreenRecordingSettings: () => ipcRenderer.invoke(IPC.systemOpenScreenSettings),
+    openMicrophoneSettings: () => ipcRenderer.invoke(IPC.systemOpenMicSettings)
   },
   onError: (cb) => on(IPC.appError, cb)
 }

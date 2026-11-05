@@ -45,6 +45,8 @@ export interface SuflyorApi {
   system: {
     /** Opens System Settings > Privacy & Security > Screen & System Audio Recording. */
     openScreenRecordingSettings(): Promise<void>
+    /** Opens System Settings > Privacy & Security > Microphone. */
+    openMicrophoneSettings(): Promise<void>
   }
   /** Errors not tied to a call (network drop, API error mid-stream). */
   onError(cb: (error: AppError) => void): Unsubscribe

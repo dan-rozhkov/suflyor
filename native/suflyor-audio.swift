@@ -1,9 +1,11 @@
 // suflyor-audio: captures system audio via ScreenCaptureKit and writes PCM s16le, 16 kHz, mono to stdout.
+// With --mic it captures the default input device (AVAudioEngine) instead, in the same output format.
 // Status lines are JSON on stderr: {"event":"started"} / {"event":"error","code":"...","message":"..."}.
 // Exits on SIGTERM, SIGINT or stdin EOF (so it never outlives the parent app).
 import Foundation
 import ScreenCaptureKit
 import CoreMedia
+import AVFoundation
 
 func emit(_ event: String, code: String? = nil, message: String? = nil) {
     var obj: [String: String] = ["event": event]
@@ -60,16 +62,153 @@ final class AudioOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 }
 
+let micMode = CommandLine.arguments.contains("--mic")
 let output = AudioOutput()
 var activeStream: SCStream?
 
-func shutdown(_ code: Int32) -> Never {
-    if let s = activeStream {
-        let sem = DispatchSemaphore(value: 0)
-        s.stopCapture { _ in sem.signal() }
-        _ = sem.wait(timeout: .now() + 1)
+/// Default input -> PCM s16le 16 kHz mono on stdout. Follows input device changes.
+final class MicCapture {
+    private let engine = AVAudioEngine()
+    private let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
+    private var converter: AVAudioConverter?
+    private var observer: NSObjectProtocol?
+    private var failed = false
+
+    func begin() throws {
+        let input = engine.inputNode
+        let inFmt = input.outputFormat(forBus: 0)
+        guard inFmt.sampleRate > 0, inFmt.channelCount > 0 else {
+            throw NSError(domain: "suflyor", code: 1, userInfo: [NSLocalizedDescriptionKey: "No input device"])
+        }
+        guard let conv = AVAudioConverter(from: inFmt, to: target) else {
+            throw NSError(domain: "suflyor", code: 2, userInfo: [NSLocalizedDescriptionKey: "Cannot convert input format"])
+        }
+        converter = conv
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 4096, format: inFmt) { [weak self] buffer, _ in
+            self?.handle(buffer)
+        }
+        engine.prepare()
+        try engine.start()
     }
-    exit(code)
+
+    func start() {
+        // Observe before the engine starts, so a device change during startup is not missed.
+        observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            self?.restart()
+        }
+        do {
+            try begin()
+        } catch {
+            emit("error", code: "capture-failed", message: error.localizedDescription)
+            exit(3)
+        }
+        emit("started")
+    }
+
+    /// The input device or its format changed: the engine stopped itself. Rebuild the tap, or report and exit.
+    private func restart() {
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        do {
+            try begin()
+        } catch {
+            emit("error", code: "device-changed", message: error.localizedDescription)
+            exit(3)
+        }
+    }
+
+    private func handle(_ buffer: AVAudioPCMBuffer) {
+        guard let conv = converter, buffer.frameLength > 0 else { return }
+        let ratio = target.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
+        guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
+        var fed = false
+        var err: NSError?
+        let status = conv.convert(to: out, error: &err) { _, inputStatus in
+            if fed {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            fed = true
+            inputStatus.pointee = .haveData
+            return buffer
+        }
+        if status == .error {
+            if !failed {
+                failed = true
+                emit("error", code: "convert-failed", message: err?.localizedDescription ?? "Audio conversion failed")
+                shutdown(3)
+            }
+            return
+        }
+        if out.frameLength == 0 { return }
+        guard let ch = out.int16ChannelData else { return }
+        writeAll(Data(bytes: ch[0], count: Int(out.frameLength) * MemoryLayout<Int16>.size))
+    }
+
+    func stop() {
+        if let o = observer { NotificationCenter.default.removeObserver(o) }
+        observer = nil
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+    }
+}
+
+var activeMic: MicCapture?
+
+func startMic() {
+    func go() {
+        let m = MicCapture()
+        activeMic = m
+        m.start()
+    }
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .authorized:
+        go()
+    case .notDetermined:
+        // The app asks first (Electron has the usage description). If nobody answers, do not hang silently.
+        var answered = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+            if !answered {
+                emit("error", code: "no-mic-permission", message: "No answer to the microphone permission request")
+                exit(3)
+            }
+        }
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            DispatchQueue.main.async {
+                answered = true
+                if granted {
+                    go()
+                } else {
+                    emit("error", code: "no-mic-permission", message: "Microphone access was denied")
+                    exit(3)
+                }
+            }
+        }
+    default:
+        emit("error", code: "no-mic-permission", message: "Microphone access is not allowed")
+        exit(3)
+    }
+}
+
+var shuttingDown = false
+
+/// Safe from any thread (signals, stdin EOF, audio errors can race): teardown runs once, on the main queue only.
+func shutdown(_ code: Int32) {
+    DispatchQueue.main.async {
+        if shuttingDown { return }
+        shuttingDown = true
+        activeMic?.stop()
+        if let s = activeStream {
+            let sem = DispatchSemaphore(value: 0)
+            s.stopCapture { _ in sem.signal() }
+            _ = sem.wait(timeout: .now() + 1)
+        }
+        exit(code)
+    }
 }
 
 // Signals and stdin EOF.
@@ -126,5 +265,9 @@ func start() async {
     }
 }
 
-Task { await start() }
+if micMode {
+    startMic()
+} else {
+    Task { await start() }
+}
 dispatchMain()

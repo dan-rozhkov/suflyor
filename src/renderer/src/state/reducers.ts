@@ -1,4 +1,4 @@
-import type { Suggestion, Utterance } from '@shared/types'
+import type { AppError, SessionStatus, Suggestion, Utterance } from '@shared/types'
 
 export const MAX_UTTERANCES = 300
 
@@ -35,4 +35,10 @@ export function isExpectedFile(name: string): boolean {
 export function staleAfter(s: Suggestion | null, u: Utterance): Suggestion | null {
   if (!s || s.status === 'streaming' || !u.isFinal || !s.utteranceId || s.utteranceId === u.id) return s
   return null
+}
+
+/** Going 'listening' clears session errors, but never a mic notice: the mic stream reports on its own schedule. */
+export function errorAfterStatus(error: AppError | null, status: SessionStatus): AppError | null {
+  if (status.state !== 'listening') return error
+  return error && (error.code === 'no-mic-permission' || error.code === 'mic') ? error : null
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Auto"
+  short_description: "Автопилот Suflyor: от задачи до отчёта"
+  default_prompt: "Используй $auto для выполнения задачи в Suflyor по полному workflow проекта."

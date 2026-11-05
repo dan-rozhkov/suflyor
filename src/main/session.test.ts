@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer, type WebSocket as WS } from 'ws'
 import type { AppError, SessionStatus, Utterance } from '../shared/types'
-import { createSession, DEMO_SCRIPT } from './session'
+import { createMicController, createMicFeed } from './mic'
+import { createConversation } from './conversation'
+import { createSession, DEMO_SCRIPT, sonioxConfig } from './session'
 
 interface Conn {
   ws: WS
@@ -372,5 +374,190 @@ describe('session demo', () => {
     const tr = h.session.getTranscript()
     expect(tr).toHaveLength(1)
     expect(tr[0]).toMatchObject({ en: 'I think', isFinal: false })
+  })
+})
+
+describe('session as the microphone stream (translate: false)', () => {
+  const MD = '## Terms\n- manual tests = ручные тесты\n- Nimbus\n\nSome notes.'
+
+  it('sends no translation and no translation_terms, keeps hints, terms and text', async () => {
+    const srv = await startServer()
+    const session = createSession({
+      sink: { status: () => {}, utterance: () => {}, error: () => {} },
+      getSonioxKey: () => 'k',
+      demo: false,
+      translate: false,
+      idPrefix: 'm',
+      getContextText: () => MD,
+      onUtterance: () => {},
+      tuning: { url: srv.url, backoffMs: () => 30, finishTimeoutMs: 100 }
+    })
+    toClose.push(() => session.dispose(), () => srv.wss.close())
+    await session.start()
+    await until(() => srv.conns.length === 1 && srv.conns[0].texts.length === 1)
+    const cfg = JSON.parse(srv.conns[0].texts[0])
+    expect('translation' in cfg).toBe(false)
+    expect(cfg.language_hints).toEqual(['en'])
+    expect(cfg.context.terms).toEqual(['manual tests', 'Nimbus'])
+    expect('translation_terms' in cfg.context).toBe(false)
+    expect(cfg.context.text).toContain('Some notes.')
+  })
+
+  it('sonioxConfig: default still translates; translate=false drops translation_terms and an emptied context', () => {
+    expect(sonioxConfig('m')).toMatchObject({ translation: { type: 'one_way', target_language: 'ru' } })
+    const ctx = { terms: ['a'], translation_terms: [{ source: 'a', target: 'б' }] }
+    expect(sonioxConfig('m', ctx)).toMatchObject({ context: ctx })
+    const mic = sonioxConfig('m', ctx, false)
+    expect(mic.context).toEqual({ terms: ['a'] })
+    expect('translation' in mic).toBe(false)
+    const only = sonioxConfig('m', { translation_terms: [{ source: 'a', target: 'б' }] }, false)
+    expect('context' in only).toBe(false)
+  })
+
+  it('idPrefix prefixes utterance ids, default stays s', async () => {
+    const srv = await startServer()
+    toClose.push(() => srv.wss.close())
+    const ids: string[] = []
+    for (const [prefix, expected] of [[undefined, 's'], ['m', 'm']] as const) {
+      const before = srv.conns.length
+      const session = createSession({
+        sink: { status: () => {}, utterance: (u) => ids.push(u.id), error: () => {} },
+        getSonioxKey: () => 'k',
+        demo: false,
+        ...(prefix ? { idPrefix: prefix } : {}),
+        onUtterance: () => {},
+        tuning: { url: srv.url, finishTimeoutMs: 100 }
+      })
+      toClose.push(() => session.dispose())
+      await session.start()
+      await until(() => srv.conns.length === before + 1 && srv.conns[before].texts.length === 1)
+      srv.conns[before].ws.send(JSON.stringify({ tokens: [{ text: 'Hello', is_final: false, translation_status: 'none' }] }))
+      await until(() => ids.length === (expected === 's' ? 1 : 2))
+      expect(ids.at(-1)?.startsWith(expected)).toBe(true)
+    }
+  })
+
+  it('failure rule: a mic session error and a mic helper error leave the main session listening', async () => {
+    const mainSrv = await startServer()
+    const micSrv = await startServer()
+    const mainStatuses: SessionStatus[] = []
+    const main = createSession({
+      sink: { status: (s) => mainStatuses.push(s), utterance: () => {}, error: () => {} },
+      getSonioxKey: () => 'k',
+      demo: false,
+      onUtterance: () => {},
+      tuning: { url: mainSrv.url, backoffMs: () => 30, finishTimeoutMs: 100 }
+    })
+    const micSession = createSession({
+      sink: { status: () => {}, utterance: () => {}, error: (e) => mic.reportError(e) },
+      getSonioxKey: () => 'k',
+      demo: false,
+      translate: false,
+      idPrefix: 'm',
+      onUtterance: () => {},
+      tuning: { url: micSrv.url, backoffMs: () => 30, finishTimeoutMs: 100 }
+    })
+    const helper = { start: () => {}, stop: () => {} }
+    const toasts: AppError[] = []
+    const mic = createMicController({
+      enabled: () => true,
+      isMainRunning: () => main.getStatus().state === 'listening',
+      requestAccess: async () => true,
+      helper,
+      session: micSession,
+      notify: (e) => toasts.push(e)
+    })
+    toClose.push(() => main.dispose(), () => micSession.dispose(), () => mainSrv.wss.close(), () => micSrv.wss.close())
+
+    await main.start()
+    await until(() => main.getStatus().state === 'listening')
+    await mic.start()
+    await until(() => micSrv.conns.length === 1 && micSrv.conns[0].texts.length === 1)
+    const seen = mainStatuses.length
+
+    // Fatal Soniox error on the mic stream only.
+    micSrv.conns[0].ws.send(JSON.stringify({ error_code: 402, error_message: 'balance' }))
+    await until(() => toasts.length === 1)
+    expect(toasts[0].message).toBe('Microphone stopped. Translation is still on.')
+    expect(micSrv.conns[0].ws.readyState).not.toBe(1)
+    // Helper error after that: no second toast.
+    mic.reportError({ code: 'audio', message: 'x' })
+    expect(toasts).toHaveLength(1)
+
+    expect(main.getStatus().state).toBe('listening')
+    expect(mainStatuses.length).toBe(seen)
+    expect(mainSrv.conns[0].ws.readyState).toBe(1)
+  })
+
+  it('a mic flush on stop never reaches suggestions; live speech does, echoes do not', async () => {
+    const srv = await startServer()
+    const conversation = createConversation()
+    const told: string[] = []
+    const feed = createMicFeed({ conversation, onMine: (u) => told.push(u.en) })
+    const session = createSession({
+      sink: { status: () => {}, utterance: (u) => feed.sink(u), error: () => {} },
+      getSonioxKey: () => 'k',
+      demo: false,
+      translate: false,
+      idPrefix: 'm',
+      onUtterance: (u) => feed.live(u),
+      tuning: { url: srv.url, finishTimeoutMs: 100 }
+    })
+    toClose.push(() => session.dispose(), () => srv.wss.close())
+    feed.open()
+    await session.start()
+    await until(() => srv.conns.length === 1 && srv.conns[0].texts.length === 1)
+    const tok = (text: string) => ({ text, is_final: false, translation_status: 'none' })
+    srv.conns[0].ws.send(JSON.stringify({ tokens: [tok('I can do Friday next week')] }))
+    await until(() => told.length === 1)
+    srv.conns[0].ws.send(JSON.stringify({ tokens: [tok('I can do Friday next week then')] }))
+    await until(() => told.length === 2)
+    await session.stop() // flushes the open utterance as final
+    await new Promise((r) => setTimeout(r, 50))
+    expect(told).toHaveLength(2) // the flush did not tell suggestions
+    expect(conversation.list().map((x) => [x.speaker, x.en, x.isFinal])).toEqual([['me', 'I can do Friday next week then', true]])
+  })
+
+  it('feedOnReconnect false keeps a reconnect flush out of onUtterance; the default still feeds it', async () => {
+    for (const [feedOnReconnect, expected] of [[false, 1], [undefined, 2]] as const) {
+      const srv = await startServer()
+      const seen: Utterance[] = []
+      const session = createSession({
+        sink: { status: () => {}, utterance: () => {}, error: () => {} },
+        getSonioxKey: () => 'k',
+        demo: false,
+        ...(feedOnReconnect === undefined ? {} : { feedOnReconnect }),
+        onUtterance: (u) => seen.push(u),
+        tuning: { url: srv.url, backoffMs: () => 30, finishTimeoutMs: 100 }
+      })
+      toClose.push(() => session.dispose(), () => srv.wss.close())
+      await session.start()
+      await until(() => srv.conns.length === 1 && srv.conns[0].texts.length === 1)
+      srv.conns[0].ws.send(JSON.stringify({ tokens: [{ text: 'hello there', is_final: false, translation_status: 'none' }] }))
+      await until(() => seen.length === 1)
+      srv.conns[0].ws.terminate() // reconnect: the open utterance is flushed as final
+      await until(() => srv.conns.length === 2)
+      await new Promise((r) => setTimeout(r, 30))
+      expect(seen).toHaveLength(expected)
+    }
+  })
+
+  it('a closed mic feed drops late flushes; an open one passes them', () => {
+    const conversation = createConversation()
+    const told: string[] = []
+    const feed = createMicFeed({ conversation, onMine: (u) => told.push(u.en) })
+    const u = { id: 'm1', en: 'something I said earlier', ru: '', isFinal: true }
+    feed.sink(u)
+    feed.live(u)
+    expect(conversation.list()).toEqual([])
+    expect(told).toEqual([])
+    feed.open()
+    feed.sink(u)
+    feed.live(u)
+    expect(conversation.list()).toHaveLength(1)
+    expect(told).toEqual(['something I said earlier'])
+    feed.close()
+    feed.sink({ ...u, id: 'm2' })
+    expect(conversation.list()).toHaveLength(1)
   })
 })

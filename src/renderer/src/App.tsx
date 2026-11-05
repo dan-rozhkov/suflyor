@@ -83,7 +83,7 @@ export function App() {
             <Suggestions suggestion={a.suggestion} />
           </motion.main>
           {/* Outside the shifted, inert page: errors stay visible and the window stays draggable while Settings is open. */}
-          <Toasts reconnecting={status.state === 'reconnecting'} error={toastError} onDismiss={a.dismissError} onOpenSettings={() => a.setSettingsOpen(true)} />
+          <Toasts reconnecting={status.state === 'reconnecting'} error={toastError} onDismiss={a.dismissError} onOpenSettings={() => a.setSettingsOpen(true)} onOpenMicSettings={a.openMicSettings} />
           {a.settingsOpen && <div className="titlebar-drag settings-drag" aria-hidden="true" />}
           <ControlBar
             state={status.state}

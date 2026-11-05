@@ -83,7 +83,8 @@ function sanitize(input: unknown): AppSettings {
   return {
     model: typeof o.model === 'string' && o.model.trim() ? o.model.trim() : DEFAULT_SETTINGS.model,
     autoSuggest: typeof o.autoSuggest === 'boolean' ? o.autoSuggest : DEFAULT_SETTINGS.autoSuggest,
-    alwaysOnTop: typeof o.alwaysOnTop === 'boolean' ? o.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop
+    alwaysOnTop: typeof o.alwaysOnTop === 'boolean' ? o.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
+    micEnabled: typeof o.micEnabled === 'boolean' ? o.micEnabled : DEFAULT_SETTINGS.micEnabled
   }
 }
 

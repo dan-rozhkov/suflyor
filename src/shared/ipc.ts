@@ -12,6 +12,7 @@ export const IPC = {
   contextLoadPath: 'context:load-path',
   contextClear: 'context:clear',
   systemOpenScreenSettings: 'system:open-screen-settings',
+  systemOpenMicSettings: 'system:open-mic-settings',
 
   // main -> renderer, events
   sessionStatus: 'session:status',
