@@ -136,22 +136,6 @@ function logoIcon(): Node {
 }
 document.querySelector('.brand')!.prepend(logoIcon())
 
-/* installed app height */
-
-function fitInstalledApp(): void {
-  const root = document.documentElement
-  root.classList.remove('root-short')
-  root.style.removeProperty('--root-extra')
-  const installed = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
-  if (!installed || !matchMedia('(orientation: portrait)').matches) return
-  const extra = rootShortfall(screen.height, appEl.getBoundingClientRect().height)
-  if (!extra) return
-  root.style.setProperty('--root-extra', `${extra}px`)
-  root.classList.add('root-short')
-}
-fitInstalledApp()
-window.addEventListener('orientationchange', () => window.setTimeout(fitInstalledApp, 300))
-
 /* access code */
 
 
@@ -640,8 +624,11 @@ function showTransientError(message: string): void {
   toastTimer = window.setTimeout(() => applyToast(lastState), 6000)
 }
 
+/** Temporary: shows the height iOS reports on the phone, until the installed layout is confirmed. */
+let viewportNote = ''
+
 function renderDiag(): void {
-  diagEl.textContent = `Audio: ${(sentSamples / 16000).toFixed(1)} s, peak ${peak.toFixed(2)}`
+  diagEl.textContent = `Audio: ${(sentSamples / 16000).toFixed(1)} s, peak ${peak.toFixed(2)}${viewportNote}`
 }
 
 function formatElapsed(sec: number): string {
@@ -1054,6 +1041,31 @@ window.addEventListener('hashchange', () => {
   showFeed()
   toggleEl.disabled = false
 })
+
+/* installed app height */
+
+/* iOS changes the height of an installed app after launch, in both directions, so it is watched and never read once. */
+const heightProbe = document.createElement('div')
+heightProbe.className = 'height-probe'
+document.body.append(heightProbe)
+
+function fitInstalledApp(): void {
+  // The keyboard can shrink the area for a moment: wait until it has closed.
+  if (document.activeElement?.matches('input, textarea')) return
+  const root = document.documentElement
+  const installed = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+  const edge = installed && matchMedia('(orientation: portrait)').matches
+  const height = Math.round(heightProbe.getBoundingClientRect().height)
+  const extra = edge ? rootShortfall(screen.height, height) : 0
+  root.classList.toggle('root-edge', edge)
+  root.style.setProperty('--root-extra', `${extra}px`)
+  viewportNote = installed ? ` | ${height}/${screen.height} +${extra}` : ''
+  renderDiag()
+}
+
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitInstalledApp).observe(heightProbe)
+document.addEventListener('focusout', () => window.setTimeout(fitInstalledApp, 400))
+fitInstalledApp()
 
 renderContextLink()
 if (code) showFeed()

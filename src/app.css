@@ -19,9 +19,15 @@ html {
   --pad-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
   background: var(--sheet);
 }
-/* Set by app.ts: the root reaches past the area iOS gave it, down to the screen edge. Same gap as at the sides. */
-html.root-short {
+/* Set by app.ts for the installed app: the same gap under the buttons as at the sides. */
+html.root-edge {
   --pad-bottom: var(--space-4);
+}
+.height-probe {
+  position: fixed;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 html:has(.app.running) {
   background: var(--base);
