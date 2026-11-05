@@ -178,11 +178,14 @@ button {
   color: var(--text-muted);
   text-wrap: pretty;
 }
+/* The sentence being typed is bold. */
 .utt-live {
+  font-weight: 800;
   color: var(--text);
 }
 .utt-time {
-  margin-right: var(--space-2);
+  display: block;
+  margin-bottom: 2px;
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-faint);
@@ -711,9 +714,11 @@ button {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;
+  padding-block: 12px;
   border-radius: 16px;
   background: transparent;
   transition:
+    padding-block var(--duration-base) var(--ease),
     width var(--duration-base) var(--ease),
     background-color var(--duration-base) var(--ease),
     box-shadow var(--duration-base) var(--ease);
@@ -727,7 +732,9 @@ button {
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  min-height: 20px;
+  min-height: 10px;
+  /* Collapsed: the hidden title and time must not stretch the row. */
+  line-height: 0;
   padding: 0 var(--space-3);
   border: 0;
   background: none;
@@ -739,7 +746,7 @@ button {
   position: absolute;
   top: 50%;
   right: 9px;
-  width: 14px;
+  width: 10px;
   height: 2px;
   margin-top: -1px;
   border-radius: 1px;
@@ -785,12 +792,14 @@ button {
 .chapters.open,
 .chapters:has(:focus-visible) {
   width: min(340px, calc(100% - 32px));
+  padding-block: 0;
   background: var(--sheet);
   box-shadow: var(--shadow-sheet);
 }
 .chapters.open .ch-row,
 .chapters:has(:focus-visible) .ch-row {
   min-height: 44px;
+  line-height: 1.35;
 }
 .chapters.open .ch-latest,
 .chapters:has(:focus-visible) .ch-latest {
@@ -811,11 +820,13 @@ button {
 @media (hover: hover) {
   .chapters:hover {
     width: min(340px, calc(100% - 32px));
+    padding-block: 0;
     background: var(--sheet);
     box-shadow: var(--shadow-sheet);
   }
   .chapters:hover .ch-row {
     min-height: 44px;
+    line-height: 1.35;
   }
   .chapters:hover .ch-latest {
     height: auto;
