@@ -10,7 +10,8 @@ import { BAD_CODE_MESSAGE, fetchToken } from './token'
 import { loadContext, saveContext } from './context'
 import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
-import { rootShortfall } from './viewport'
+import { isInstalledApp, rootShortfall } from './viewport'
+import { addHaptic, addVibration } from './haptics'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -456,6 +457,7 @@ const latestLabel = document.createElement('span')
 latestLabel.className = 'ch-latest-label'
 latestLabel.textContent = 'Latest'
 latestBtn.append(latestLabel)
+addHaptic(latestBtn)
 
 function railOpen(): boolean {
   return chaptersEl.classList.contains('open')
@@ -509,6 +511,7 @@ function newChapterBtn(): HTMLButtonElement {
   dash.className = 'ch-dash'
   dash.setAttribute('aria-hidden', 'true')
   b.append(title, time, dash)
+  addHaptic(b)
   b.addEventListener('click', (e) => {
     if (openedByTap(e)) return
     const c = chapters[chapterBtns.indexOf(b)]
@@ -813,6 +816,7 @@ function newReplyItem(): HTMLElement {
   t.className = 'opt-text'
   t.lang = 'en'
   b.append(hidden, t)
+  addHaptic(b)
   b.addEventListener('click', () => copyText(b.dataset.text ?? ''))
   li.append(b)
   return li
@@ -912,6 +916,7 @@ function renderReplies(): void {
       chev.innerHTML = CHEVRON_ICON
       chev.setAttribute('aria-hidden', 'true')
       more.append(moreLabel, chev)
+      addHaptic(more)
       more.addEventListener('click', () => {
         moreOpen = !moreOpen
         renderReplies()
@@ -1053,7 +1058,7 @@ function fitInstalledApp(): void {
   // The keyboard can shrink the area for a moment: wait until it has closed.
   if (document.activeElement?.matches('input, textarea')) return
   const root = document.documentElement
-  const installed = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+  const installed = isInstalledApp()
   const edge = installed && matchMedia('(orientation: portrait)').matches
   const height = Math.round(heightProbe.getBoundingClientRect().height)
   const extra = edge ? rootShortfall(screen.height, height) : 0
@@ -1066,6 +1071,10 @@ function fitInstalledApp(): void {
 if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitInstalledApp).observe(heightProbe)
 document.addEventListener('focusout', () => window.setTimeout(fitInstalledApp, 400))
 fitInstalledApp()
+
+/* Dynamic buttons add their own tap layer when they are built. */
+document.querySelectorAll('button').forEach(addHaptic)
+addVibration()
 
 renderContextLink()
 if (code) showFeed()

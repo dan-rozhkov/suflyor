@@ -10,3 +10,8 @@ export function rootShortfall(screenHeight: number, rootHeight: number): number 
   const missing = screenHeight - rootHeight
   return missing > STATUS_BAR_MAX ? missing / 2 : 0
 }
+
+/** True for the app opened from the Home Screen; `navigator.standalone` is the iOS-only flag. */
+export function isInstalledApp(): boolean {
+  return matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+}

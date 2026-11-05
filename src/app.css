@@ -51,9 +51,8 @@ textarea {
 button {
   -webkit-tap-highlight-color: transparent;
 }
-:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+:focus {
+  outline: none;
 }
 [hidden] {
   display: none !important;
@@ -344,7 +343,6 @@ button {
 }
 .field:focus,
 .field-area:focus {
-  outline: none;
   background: var(--surface-active);
 }
 @media (hover: hover) {
@@ -572,7 +570,6 @@ button {
   --text-muted: #a2a2aa;
   --line: rgba(255, 255, 255, 0.12);
   --surface: #2a2a2e;
-  --focus-ring: rgba(255, 255, 255, 0.6);
   --green: #3ecf7a;
   position: relative;
   z-index: 1;
@@ -662,10 +659,6 @@ button {
 }
 .opt:hover .opt-text {
   color: var(--text-muted);
-}
-.opt:focus-visible {
-  outline-offset: -2px;
-  border-radius: 8px;
 }
 .opt-text {
   flex: 1;
@@ -1003,4 +996,28 @@ button {
 /* The suggest button is disabled while replies stream, but the spinning spark stays clear. */
 .bar-round:disabled:has(.spark-live) {
   opacity: 1;
+}
+
+/* Tap layer for iOS button haptics. Zero specificity, so a button that sets its own position keeps it. */
+:where(.haptic-host) {
+  position: relative;
+}
+.haptic-tap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.haptic-switch {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  visibility: hidden;
+}
+button:disabled > .haptic-tap {
+  pointer-events: none;
 }

@@ -55,6 +55,8 @@ The Worker name in `wrangler.jsonc` sets the public URL and the origin where the
 
 An installed Home Screen app may not see what Safari saved, so the code may have to be pasted once.
 
+In the installed app, buttons give a short haptic tap on iPhone and a short vibration on Android.
+
 iOS reads the status bar style when the app is added. If the clock is hard to read after an update, remove the app from the Home Screen and add it again.
 
 ## Reply suggestions
