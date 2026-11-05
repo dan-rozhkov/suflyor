@@ -38,11 +38,10 @@
           <p class="state-text">Names, terms and notes for this call. Translation and replies will use them.</p>
           <div class="field-wrap">
             <textarea id="context-text" class="field-area" rows="8" spellcheck="false" aria-labelledby="context-title"></textarea>
+            <p class="field-note" id="context-error" role="alert" hidden></p>
             <button id="context-file-btn" type="button" class="attach-btn" aria-label="Attach a file"></button>
           </div>
-          <p class="state-text bad" id="context-error" role="alert" hidden></p>
           <input id="context-file" type="file" accept=".md,.txt,text/plain,text/markdown" hidden />
-          <button id="context-clear" type="button" class="pill pill-quiet">Clear</button>
           <button id="context-save" type="button" class="pill">Save</button>
         </section>
         <div class="feed-wrap" id="feed-wrap">

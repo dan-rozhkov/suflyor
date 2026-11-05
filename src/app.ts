@@ -44,7 +44,6 @@ const contextErrorEl = $<HTMLElement>('context-error')
 const contextFileBtnEl = $<HTMLButtonElement>('context-file-btn')
 const contextFileEl = $<HTMLInputElement>('context-file')
 const contextSaveEl = $<HTMLButtonElement>('context-save')
-const contextClearEl = $<HTMLButtonElement>('context-clear')
 const contextCloseEl = $<HTMLButtonElement>('context-close')
 const waveEl = $<HTMLElement>('wave')
 const elapsedEl = $<HTMLElement>('elapsed')
@@ -195,6 +194,7 @@ function renderContextLink(): void {
 function setContextError(text: string): void {
   contextErrorEl.hidden = !text
   contextErrorEl.textContent = text
+  contextTextEl.classList.toggle('field-error', !!text)
 }
 
 function openContext(): void {
@@ -230,12 +230,7 @@ contextSaveEl.addEventListener('click', () => {
   }
   closePanel()
 })
-contextClearEl.addEventListener('click', () => {
-  contextTextEl.value = ''
-  saveContext('')
-  renderContextLink()
-  setContextError('')
-})
+contextTextEl.addEventListener('input', () => setContextError(''))
 contextFileBtnEl.addEventListener('click', () => contextFileEl.click())
 contextFileEl.addEventListener('change', () => {
   const file = contextFileEl.files?.[0]

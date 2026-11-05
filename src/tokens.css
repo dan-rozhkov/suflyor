@@ -1,6 +1,6 @@
 /* Tokens. A bright content sheet sits on a black base. Colour is reserved for Stop and errors. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --font-sans: 'Nunito Variable', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 
@@ -42,21 +42,4 @@
   --toast-bg: #0c0c0d;
   --toast-text: #ffffff;
   --shadow-sheet: 0 12px 40px rgba(0, 0, 0, 0.2);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sheet: #17171a;
-    --surface: #232327;
-    --surface-active: #1c1c20;
-    --logo-quiet: #2f2f34;
-    --text: #ffffff;
-    --text-muted: #a2a2aa;
-    --text-faint: #66666e;
-    --line: rgba(255, 255, 255, 0.1);
-    --focus-ring: rgba(255, 255, 255, 0.5);
-    --red: #ff6b6b;
-    --toast-bg: #2c2c31;
-    --shadow-sheet: 0 0 0 1px oklch(1 0 0 / 0.08), 0 12px 40px rgba(0, 0, 0, 0.6);
-  }
 }
