@@ -4,7 +4,7 @@ import { BAD_CODE_MESSAGE, isHeaderSafe } from './token'
 
 export const SUGGEST_TIMEOUT_MESSAGE = 'The replies are not responding. Try again.'
 export const SUGGEST_NOT_SET_UP_MESSAGE = 'Reply suggestions are not set up yet.'
-export const SUGGEST_TOO_LONG_MESSAGE = 'The context is too long for replies.'
+export const SUGGEST_TOO_LONG_MESSAGE = 'The notes are too long for replies.'
 export const SUGGEST_FAILED_MESSAGE = 'Could not get replies. Try again.'
 export const SUGGEST_IDLE_MS = 15_000
 

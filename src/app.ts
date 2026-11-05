@@ -4,7 +4,6 @@ import './app.css'
 import type { Utterance } from './types'
 import { englishForHero, paragraphParts, paragraphs } from './sentences'
 import { createSonioxClient } from './soniox'
-import { canAddToHomeScreen, isStandalone } from './install'
 import { startMic } from './mic'
 import { createSession, MIC_DENIED_MESSAGE, type SessionState } from './session'
 import { BAD_CODE_MESSAGE, fetchToken } from './token'
@@ -26,13 +25,8 @@ const statusIconEl = $<HTMLElement>('status-icon')
 const statusTextEl = $<HTMLElement>('status-text')
 const diagEl = $<HTMLElement>('diag')
 const forgetEl = $<HTMLButtonElement>('forget')
-const installEl = $<HTMLButtonElement>('install')
-const installPanelEl = $<HTMLElement>('install-panel')
-const copyStepEl = $<HTMLElement>('copy-step')
-const copyEl = $<HTMLButtonElement>('copy-code')
-const copyFailEl = $<HTMLElement>('copy-fail')
-const installDoneEl = $<HTMLButtonElement>('install-done')
-const codeHintEl = $<HTMLElement>('code-hint')
+const moreEl = $<HTMLButtonElement>('more')
+const menuEl = $<HTMLElement>('menu')
 const appEl = document.querySelector<HTMLElement>('.app')!
 const dockEl = $<HTMLElement>('dock')
 const stopEl = $<HTMLButtonElement>('stop')
@@ -51,12 +45,14 @@ const contextFileBtnEl = $<HTMLButtonElement>('context-file-btn')
 const contextFileEl = $<HTMLInputElement>('context-file')
 const contextSaveEl = $<HTMLButtonElement>('context-save')
 const contextClearEl = $<HTMLButtonElement>('context-clear')
+const contextCloseEl = $<HTMLButtonElement>('context-close')
 const waveEl = $<HTMLElement>('wave')
 const elapsedEl = $<HTMLElement>('elapsed')
 
 const STORAGE_KEY = 'suflyorAccessCode'
+const CODE_PLACEHOLDER = 'Access code'
 const MAX_FILE_BYTES = 1024 * 1024
-const NO_CONTEXT_NOTICE = 'Translation continues without the call context.'
+const NO_CONTEXT_NOTICE = 'Translation continues without the call notes.'
 const NO_LOCK_NOTICE = 'Keep the screen on: locking it stops the microphone.'
 
 const SVG_OPEN = '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" '
@@ -66,6 +62,9 @@ const SPARK_ICON = `${SVG_OPEN}data-pen-icon="Sparkle"><path transform="translat
 const CHECK_ICON = `${SVG_OPEN}data-pen-icon="Check"><path d="M2.75 8.5l3.25 3.25 7.25-7.5" /></svg>`
 const CHEVRON_ICON = `${SVG_OPEN}data-pen-icon="CaretDown"><path d="M4 6l4 4 4-4" /></svg>`
 const CLOSE_ICON = `${SVG_OPEN}data-pen-icon="X"><path d="M3.75 3.75l8.5 8.5M12.25 3.75l-8.5 8.5" /></svg>`
+const RECORD_ICON = `${SVG_OPEN}data-pen-icon="Record"><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="2.75" fill="currentColor" stroke="none" /></svg>`
+const DOTS_ICON = `${SVG_OPEN}data-pen-icon="DotsThree"><circle cx="3" cy="8" r="1.25" fill="currentColor" stroke="none" /><circle cx="8" cy="8" r="1.25" fill="currentColor" stroke="none" /><circle cx="13" cy="8" r="1.25" fill="currentColor" stroke="none" /></svg>`
+const CLIP_ICON = `${SVG_OPEN}data-pen-icon="Paperclip"><path d="M13.5 7.5l-5.6 5.6a3.2 3.2 0 0 1-4.5-4.5l6-6a2.1 2.1 0 0 1 3 3l-6 6a1 1 0 0 1-1.5-1.5l5.6-5.6" /></svg>`
 const REFRESH_ICON = `${SVG_OPEN}data-pen-icon="ArrowClockwise"><path d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M11.7 1.8v2.5H9.2" /></svg>`
 
 function readCode(): string {
@@ -127,32 +126,44 @@ let chapters: Chapter[] = []
 stopEl.innerHTML = STOP_ICON
 sparkEl.innerHTML = SPARK_ICON
 repliesCloseEl.innerHTML = CLOSE_ICON
+toggleEl.insertAdjacentHTML('afterbegin', RECORD_ICON)
+moreEl.innerHTML = DOTS_ICON
+contextFileBtnEl.innerHTML = CLIP_ICON
+contextCloseEl.innerHTML = CLOSE_ICON
+
+function logoIcon(): Node {
+  return $<HTMLTemplateElement>('logo-icon').content.firstElementChild!.cloneNode(true)
+}
+document.querySelector('.brand')!.prepend(logoIcon())
 
 /* access code */
 
-const standalone = isStandalone(window)
-codeHintEl.hidden = !standalone
-const offerInstall = canAddToHomeScreen(window)
-installEl.hidden = !offerInstall
+
+/** The error sits inside the field, in place of the placeholder. Screen readers get it from the hidden alert. */
+function setCodeError(error: string): void {
+  codeErrorEl.textContent = error
+  codeEl.placeholder = error || CODE_PLACEHOLDER
+  codeEl.classList.toggle('field-error', !!error)
+  if (error) codeEl.setAttribute('aria-invalid', 'true')
+  else codeEl.removeAttribute('aria-invalid')
+}
 
 function showForm(error = ''): void {
-  closeInstall()
   closePanel()
   formEl.hidden = false
   feedWrapEl.hidden = true
-  codeErrorEl.hidden = !error
-  codeErrorEl.textContent = error
-  codeErrorEl.classList.toggle('bad', !!error)
+  setCodeError(error)
   toggleEl.disabled = true
   codeEl.value = ''
 }
 
 function showFeed(): void {
-  closeInstall()
   closePanel()
   formEl.hidden = true
   feedWrapEl.hidden = false
 }
+
+codeEl.addEventListener('input', () => setCodeError(''))
 
 formEl.addEventListener('submit', (e) => {
   e.preventDefault()
@@ -162,57 +173,6 @@ formEl.addEventListener('submit', (e) => {
   writeCode(code)
   showFeed()
   toggleEl.disabled = false
-})
-
-/* install panel */
-
-let installOpen = false
-let copyTimer: number | undefined
-
-function openInstall(): void {
-  if (running || !offerInstall) return
-  closePanel()
-  installOpen = true
-  setToast('', null)
-  formEl.hidden = true
-  feedWrapEl.hidden = true
-  installPanelEl.hidden = false
-  copyStepEl.hidden = !code
-  copyFailEl.hidden = true
-  copyEl.textContent = 'Copy access code'
-}
-
-function closeInstall(): void {
-  if (!installOpen) return
-  installOpen = false
-  window.clearTimeout(copyTimer)
-  installPanelEl.hidden = true
-  formEl.hidden = !!code
-  feedWrapEl.hidden = !code
-}
-
-installEl.addEventListener('click', openInstall)
-installDoneEl.addEventListener('click', closeInstall)
-copyEl.addEventListener('click', () => {
-  copyFailEl.hidden = true
-  // Called inside the tap: Safari allows the clipboard only during a user gesture.
-  const write = navigator.clipboard?.writeText(code)
-  if (!write) {
-    copyFailEl.hidden = false
-    return
-  }
-  write.then(
-    () => {
-      copyEl.textContent = 'Copied'
-      window.clearTimeout(copyTimer)
-      copyTimer = window.setTimeout(() => {
-        copyEl.textContent = 'Copy access code'
-      }, 2000)
-    },
-    () => {
-      copyFailEl.hidden = false
-    }
-  )
 })
 
 /* context panel */
@@ -225,7 +185,7 @@ function renderContextLink(): void {
   const on = !!loadContext()
   if (on) {
     contextEl.dataset.on = ''
-    contextEl.setAttribute('aria-label', 'Context, on')
+    contextEl.setAttribute('aria-label', 'Notes, on')
   } else {
     delete contextEl.dataset.on
     contextEl.removeAttribute('aria-label')
@@ -239,7 +199,6 @@ function setContextError(text: string): void {
 
 function openContext(): void {
   if (running || !code) return
-  closeInstall()
   contextOpen = true
   setToast('', null)
   formEl.hidden = true
@@ -257,7 +216,8 @@ function closePanel(): void {
   feedWrapEl.hidden = !code
 }
 
-contextEl.addEventListener('click', () => (contextOpen ? closePanel() : openContext()))
+contextEl.addEventListener('click', openContext)
+contextCloseEl.addEventListener('click', closePanel)
 contextSaveEl.addEventListener('click', () => {
   const r = saveContext(contextTextEl.value)
   renderContextLink()
@@ -295,7 +255,28 @@ contextFileEl.addEventListener('change', () => {
   )
 })
 
+/* menu */
+
+function setMenu(open: boolean): void {
+  menuEl.hidden = !open
+  moreEl.setAttribute('aria-expanded', String(open))
+}
+
+moreEl.addEventListener('click', () => {
+  setMenu(menuEl.hasAttribute('hidden'))
+  if (!menuEl.hidden) forgetEl.focus()
+})
+document.addEventListener('click', (e) => {
+  if (!menuEl.hidden && !moreEl.contains(e.target as Node) && !menuEl.contains(e.target as Node)) setMenu(false)
+})
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || menuEl.hidden) return
+  setMenu(false)
+  moreEl.focus()
+})
+
 forgetEl.addEventListener('click', () => {
+  setMenu(false)
   if (running) session.stop()
   resetReplies()
   clearFeed()
@@ -317,7 +298,7 @@ function empty(title: string, text: string): HTMLElement {
   const p = document.createElement('p')
   p.className = 'state-text'
   p.textContent = text
-  state.append(h, p)
+  state.append(logoIcon(), h, p)
   wrap.append(state)
   return wrap
 }
@@ -721,10 +702,8 @@ function onState(s: SessionState): void {
   appEl.classList.toggle('running', running)
   dockEl.inert = !running
   idleEl.inert = running
-  installEl.hidden = !offerInstall || running
   contextEl.hidden = running
   if (running) {
-    closeInstall()
     closePanel()
   } else resetReplies()
   waveEl.classList.toggle('wave-idle', s.phase !== 'listening')
@@ -1047,12 +1026,6 @@ stopEl.addEventListener('click', () => {
 
 toggleEl.addEventListener('click', () => {
   if (running || !code) return
-  if (contextOpen) {
-    // Typed text counts: Start uses what the panel shows.
-    saveContext(contextTextEl.value)
-    renderContextLink()
-    closePanel()
-  }
   sentSamples = 0
   peak = 0
   notice = ''

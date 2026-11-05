@@ -6,8 +6,8 @@ A web page that listens to the room through the microphone and shows live Englis
 
 - The page records the microphone and sends the audio straight to [Soniox](https://soniox.com), which streams recognition and translation back.
 - A small Cloudflare Worker (`src/worker.ts`) holds the Soniox API key. The page sends the access code to the Worker and gets a short-lived Soniox key. It lasts 60 seconds, which is enough to open the stream.
-- Reply suggestions go through the same Worker. The page sends the last lines of English text and the call context to `POST /api/suggest`. The Worker adds the OpenCode key and streams the answer back. The key never reaches the page.
-- Chapters go through the same Worker. While a call runs, the page sends the Russian text of the open chapter to `POST /api/chapters`, and the Worker asks OpenCode for chapter titles. Only that text is sent, never the call context.
+- Reply suggestions go through the same Worker. The page sends the last lines of English text and the call notes to `POST /api/suggest`. The Worker adds the OpenCode key and streams the answer back. The key never reaches the page.
+- Chapters go through the same Worker. While a call runs, the page sends the Russian text of the open chapter to `POST /api/chapters`, and the Worker asks OpenCode for chapter titles. Only that text is sent, never the call notes.
 - There is no service worker. The app needs the network, and a cache would keep old versions on the phone.
 
 ## Requirements
@@ -50,9 +50,8 @@ The Worker name in `wrangler.jsonc` sets the public URL and the origin where the
 
 ## Install on iPhone
 
-1. Open the page in Safari and tap Install in the small row at the bottom, then Copy access code.
-2. In Safari, tap Share, then Add to Home Screen.
-3. Open Suflyor from the Home Screen and paste the code if it asks.
+1. Open the page in Safari, tap Share, then Add to Home Screen.
+2. Open Suflyor from the Home Screen and enter the access code.
 
 An installed Home Screen app may not see what Safari saved, so the code may have to be pasted once.
 
@@ -64,9 +63,9 @@ While a call runs, the round sparkle button in the dark bar asks for replies. It
 
 Every paragraph in the feed starts with the time it appeared (24-hour clock, to the second). During a call the page also splits the talk into chapters with short Russian titles. Small dashes show at the right edge of the feed, one per chapter. Tap them on a phone, or hover on a computer, to open the list. Tap a chapter to scroll to it. `Latest` scrolls back to the end of the feed. A chapter shorter than about 20 seconds of speech is joined to the one before it, except the first chapter of a call. Closed chapters do not change. Only the last chapter is sent again as the call goes on, so a long call costs the same for each request. If a request fails, the page stays quiet and tries again later.
 
-## Call context
+## Call notes
 
-Tap Context when no call is running. Type names, terms and notes, or attach a `.md` or `.txt` file (up to 1 MB). The text stays on this device. Soniox uses it for recognition and translation, and the reply model uses it for suggestions. The first part is cut to fit the Soniox limit. See the format in [docs/context-example.md](docs/context-example.md): a `Call` section with `- key: value` lines, a `Terms` section with `- term` or `- term = перевод` lines, and free text for the rest.
+Tap Notes when no call is running. Type names, terms and notes, or attach a `.md` or `.txt` file (up to 1 MB). The text stays on this device. Soniox uses it for recognition and translation, and the reply model uses it for suggestions. The first part is cut to fit the Soniox limit. See the format in [docs/context-example.md](docs/context-example.md): a `Call` section with `- key: value` lines, a `Terms` section with `- term` or `- term = перевод` lines, and free text for the rest.
 
 ## Limits
 
@@ -74,13 +73,13 @@ Tap Context when no call is running. Type names, terms and notes, or attach a `.
 - The app must stay in front. Switching away stops the microphone.
 - Anyone with the code can spend the Soniox balance. They can also spend the OpenCode balance.
 - Reply suggestions need the `OPENCODE_API_KEY` secret. Without it the button does not work.
-- Context is cut to 100,000 characters. Soniox gets a shorter version of it.
+- Notes are cut to 100,000 characters. Soniox gets a shorter version of them.
 - Timestamps and chapters live only while the page is open. A reload clears them, as it clears the feed.
 - Chapters need the same `OPENCODE_API_KEY` secret. Without it the dashes do not appear.
 - It uses the microphone only, so it hears the room, not system audio.
 
 ## Privacy
 
-Microphone audio goes directly from the page to Soniox. Transcripts are not saved. The call context is saved in this browser only. It goes to Soniox with each session. When you ask for replies, the Worker sends the context and the last English lines to OpenCode. Chapters work differently: during a call, without any tap, the Russian text of the open chapter goes to OpenCode through the Worker. The call context is not part of it. Check your local rules on recording and your employer's policies before using it on a call.
+Microphone audio goes directly from the page to Soniox. Transcripts are not saved. The call notes are saved in this browser only. They go to Soniox with each session. When you ask for replies, the Worker sends the notes and the last English lines to OpenCode. Chapters work differently: during a call, without any tap, the Russian text of the open chapter goes to OpenCode through the Worker. The call notes is not part of it. Check your local rules on recording and your employer's policies before using it on a call.
 
 The earlier macOS app and Chrome extension are in git history, last at commit `b5ca781`.

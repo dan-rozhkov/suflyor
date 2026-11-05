@@ -81,7 +81,7 @@ describe('createSuggester', () => {
       [503, { message: 'Reply suggestions are not set up yet.' }],
       [401, { message: 'This access code is wrong.', badCode: true }],
       [502, { message: 'Could not get replies. Try again.' }],
-      [413, { message: 'The context is too long for replies.' }]
+      [413, { message: 'The notes are too long for replies.' }]
     ]
     for (const [status, want] of cases) {
       const { s, updates } = setup((async () => new Response('{}', { status })) as unknown as typeof fetch)
