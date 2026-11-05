@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Suflyor" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <title>Suflyor</title>
+  </head>
+  <body>
+    <div class="app">
+      <main class="page">
+        <div id="status" class="toast" role="status" hidden>
+          <span class="toast-icon tone-red" id="status-icon" aria-hidden="true"></span>
+          <span class="toast-text" id="status-text"></span>
+        </div>
+        <form id="code-form" class="state code-form" hidden autocomplete="off">
+          <h1 class="state-title">Enter your access code.</h1>
+          <p class="state-text" id="code-hint" hidden>Paste the access code you copied.</p>
+          <p class="state-text" id="code-error" hidden></p>
+          <input id="code" class="field" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Access code" aria-label="Access code" />
+          <button type="submit" class="pill">Continue</button>
+        </form>
+        <section id="install-panel" class="state install-panel" hidden aria-labelledby="install-title">
+          <h1 class="state-title" id="install-title">Install Suflyor</h1>
+          <ol class="steps">
+            <li id="copy-step">
+              <button id="copy-code" type="button" class="pill">Copy access code</button>
+              <p class="state-text" id="copy-fail" hidden>Could not copy. Keep this page open and copy the code from your notes.</p>
+            </li>
+            <li>In Safari, tap Share, then Add to Home Screen.</li>
+            <li>Open Suflyor from the Home Screen and paste the code if it asks.</li>
+          </ol>
+          <button id="install-done" type="button" class="pill">Done</button>
+        </section>
+        <div class="feed-wrap" id="feed-wrap">
+          <div id="feed" class="feed" role="log" aria-label="Translation" aria-live="off" tabindex="0"></div>
+        </div>
+        <footer class="foot">
+          <span id="diag" class="diag">Audio: 0.0 s, peak 0.00</span>
+          <span class="foot-links">
+            <button id="install" type="button" class="link">Install</button>
+            <button id="forget" type="button" class="link">Forget code</button>
+          </span>
+        </footer>
+      </main>
+      <div class="bar" id="bar">
+        <div class="timer" id="timer" hidden>
+          <span class="wave wave-idle" id="wave" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="elapsed" aria-hidden="true">0:00</span>
+        </div>
+        <button id="toggle" type="button" class="start">Start</button>
+      </div>
+    </div>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>

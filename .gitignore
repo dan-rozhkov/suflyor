@@ -1,8 +1,9 @@
 node_modules
-out
 dist
 .env
-.DS_Store
-resources/bin
 .dev.vars
 .wrangler
+.DS_Store
+# Left behind by the removed desktop app in old checkouts.
+out
+resources/bin

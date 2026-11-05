@@ -1,0 +1,12 @@
+{
+  // The name sets the public URL and the origin where the access code is saved. Do not rename it.
+  "name": "suflyor-mobile",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  // SONIOX_API_KEY and ACCESS_CODE are secrets. Set them with `wrangler secret put`, never in this file.
+  "assets": {
+    "directory": "./dist",
+    "run_worker_first": ["/api/*"]
+  },
+  "workers_dev": true
+}

@@ -2,37 +2,21 @@
   "name": "suflyor",
   "version": "0.1.0",
   "private": true,
-  "description": "Suflyor: live EN to RU translation and reply hints",
-  "main": "./out/main/index.js",
+  "description": "Suflyor: live EN to RU translation in the browser",
   "scripts": {
-    "dev": "npm run build:helper && electron-vite dev",
-    "build": "npm run build:helper && electron-vite build",
-    "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.extension.json && tsc --noEmit -p tsconfig.mobile.json",
-    "test": "vitest run",
-    "build:extension": "vite build --config src/extension/vite.config.mts",
-    "build:mobile": "vite build --config src/mobile/vite.config.mts",
-    "deploy:mobile": "npm run build:mobile && npx wrangler@4 deploy --config src/mobile/wrangler.jsonc",
-    "build:helper": "mkdir -p resources/bin && swiftc -O -target arm64-apple-macos13.0 -swift-version 5 native/suflyor-audio.swift -o resources/bin/suflyor-audio"
+    "dev": "npm run build && npx wrangler@4 dev",
+    "build": "vite build",
+    "deploy": "npm run build && npx wrangler@4 deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@types/ws": "^8.18.2",
-    "@vitejs/plugin-react": "^6.2.1",
-    "electron": "^45.2.2",
-    "electron-vite": "^6.0.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.1.0"
   },
   "dependencies": {
-    "@base-ui/react": "^1.9.0",
-    "@fontsource-variable/nunito": "^5.3.0",
-    "motion": "^14.9.1",
-    "ws": "^8.22.1"
+    "@fontsource-variable/nunito": "^5.3.0"
   }
 }
