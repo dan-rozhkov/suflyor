@@ -314,4 +314,63 @@ describe('session demo', () => {
     expect(last.error?.code).toBe('no-screen-permission')
     ctl.dispose()
   })
+
+  it('sends Soniox context built from the md on every connect, none without md', async () => {
+    const srv = await startServer()
+    let md = '## Call\n- Company: Acme\n\n## Terms\n- Nimbus\n\n## Notes\nWe sell Nimbus.'
+    const h = harness(srv.url, 'k', { backoffMs: () => 30 })
+    // rebuild a session that has getContextText
+    const session = createSession({
+      sink: { status: () => {}, utterance: () => {}, error: () => {} },
+      getSonioxKey: () => 'k',
+      getContextText: () => md,
+      demo: false,
+      onUtterance: () => {},
+      tuning: { url: srv.url, backoffMs: () => 30, finishTimeoutMs: 100 }
+    })
+    toClose.push(() => session.dispose(), () => h.session.dispose(), () => srv.wss.close())
+    await session.start()
+    await until(() => srv.conns.length === 1 && srv.conns[0].texts.length === 1)
+    expect(JSON.parse(srv.conns[0].texts[0]).context).toEqual({
+      general: [{ key: 'Company', value: 'Acme' }],
+      text: '## Notes\nWe sell Nimbus.',
+      terms: ['Nimbus']
+    })
+    md = ''
+    srv.conns[0].ws.terminate()
+    await until(() => srv.conns.length === 2 && srv.conns[1].texts.length === 1)
+    expect('context' in JSON.parse(srv.conns[1].texts[0])).toBe(false)
+  })
+
+  it('strips fillers from en and ru, skips filler-only rows, keeps raw text for existing rows', async () => {
+    const srv = await startServer()
+    const h = harness(srv.url)
+    toClose.push(() => h.session.dispose(), () => srv.wss.close())
+    await h.session.start()
+    await until(() => srv.conns.length === 1 && srv.conns[0].texts.length === 1)
+    const send = (tokens: unknown[]): void => srv.conns[0].ws.send(JSON.stringify({ tokens }))
+    const o = (text: string, fin = false) => ({ text, is_final: fin, translation_status: 'original' })
+    const t = (text: string, fin = false) => ({ text, is_final: fin, translation_status: 'translation' })
+
+    send([o('Um', false)])
+    await new Promise((r) => setTimeout(r, 100))
+    expect(h.utterances).toHaveLength(0)
+    expect(h.seen).toHaveLength(0)
+    expect(h.session.getTranscript()).toHaveLength(0)
+
+    send([o('Um, I think', false), t('Э-э, я думаю', false)])
+    await until(() => h.seen.length === 1)
+    expect(h.seen[0]).toMatchObject({ en: 'I think', ru: 'Я думаю' })
+
+    // row exists: filler-only update keeps raw en
+    send([o('Um', true)])
+    await until(() => h.utterances.length === 2)
+    // sink only: UI keeps the row; no onUtterance, transcript untouched
+    expect(h.utterances[1]).toMatchObject({ en: 'Um', ru: '' })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(h.seen).toHaveLength(1)
+    const tr = h.session.getTranscript()
+    expect(tr).toHaveLength(1)
+    expect(tr[0]).toMatchObject({ en: 'I think', isFinal: false })
+  })
 })

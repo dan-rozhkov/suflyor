@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Tooltip } from '@base-ui/react/tooltip'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import './styles/app.css'
@@ -9,7 +9,7 @@ import { Suggestions } from './components/Suggestions'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Toasts } from './components/Toasts'
 import { ControlBar } from './components/ControlBar'
-import { stagger, staggerItem } from './motion'
+import { sheetSpring, stagger, staggerItem } from './motion'
 
 function Empty({ id, title, text }: { id: string; title: string; text: string }) {
   return (
@@ -23,6 +23,8 @@ function Empty({ id, title, text }: { id: string; title: string; text: string })
 export function App() {
   const a = useSuflyor()
   const [dragging, setDragging] = useState(false)
+  const [panelHeight, setPanelHeight] = useState(0)
+  const appRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let depth = 0
@@ -74,16 +76,19 @@ export function App() {
   return (
     <MotionConfig reducedMotion="user">
       <Tooltip.Provider delay={500}>
-        <div className="app">
-          <main className="page">
+        <div className="app" ref={appRef}>
+          <motion.main className="page" inert={a.settingsOpen} initial={false} animate={{ y: a.settingsOpen ? -panelHeight : 0 }} transition={sheetSpring}>
             <Header context={a.context} onPick={a.pickContext} onClear={a.clearContext} onSettings={() => a.setSettingsOpen(true)} />
-            <Toasts reconnecting={status.state === 'reconnecting'} error={toastError} onDismiss={a.dismissError} onOpenSettings={() => a.setSettingsOpen(true)} />
             <Transcript utterances={a.utterances} empty={empty} />
             <Suggestions suggestion={a.suggestion} />
-          </main>
+          </motion.main>
+          {/* Outside the shifted, inert page: errors stay visible and the window stays draggable while Settings is open. */}
+          <Toasts reconnecting={status.state === 'reconnecting'} error={toastError} onDismiss={a.dismissError} onOpenSettings={() => a.setSettingsOpen(true)} />
+          {a.settingsOpen && <div className="titlebar-drag settings-drag" aria-hidden="true" />}
           <ControlBar
             state={status.state}
             action={action}
+            done={a.settingsOpen ? () => a.setSettingsOpen(false) : undefined}
             canSuggest={listening}
             suggesting={a.suggestion?.status === 'streaming'}
             onStart={a.start}
@@ -97,7 +102,7 @@ export function App() {
               </motion.div>
             )}
           </AnimatePresence>
-          <SettingsDialog open={a.settingsOpen} settings={settings} onOpenChange={a.setSettingsOpen} onSave={a.saveSettings} />
+          <SettingsDialog open={a.settingsOpen} settings={settings} onOpenChange={a.setSettingsOpen} onSave={a.saveSettings} onHeight={setPanelHeight} container={appRef} />
         </div>
       </Tooltip.Provider>
     </MotionConfig>

@@ -32,6 +32,16 @@ const suggestion: Suggestion = {
   meaningRu: 'Расскажите о своей роли: вы вели миграцию дизайн-системы и координировали три команды.'
 }
 
+const monologue: Utterance[] = [
+  { id: 'm1', en: 'Thanks for making time.', ru: 'Спасибо, что нашли время.', isFinal: true },
+  {
+    id: 'm2',
+    en: 'We are building Lumora, a lamp that adjusts its light to your daily rhythm. The first batch shipped in March and the feedback was mixed. Many people love the warm evening mode. Others say the app setup takes too long and the sensor misreads bright rooms. Before we decide on the next release, I would like to hear how you would approach this',
+    ru: 'Мы делаем Lumora — лампу, которая подстраивает свет под ваш распорядок дня. Первая партия ушла в марте, и отзывы получились неоднозначными. Многим нравится тёплый вечерний режим. Другие говорят, что настройка через приложение занимает слишком много времени, а датчик ошибается в ярких комнатах. Прежде чем мы решим, что будет в следующем релизе, я хотел бы услышать, как бы вы подошли к этой задаче',
+    isFinal: false
+  }
+]
+
 const idle: SessionStatus = { state: 'idle', demo: false }
 const listening: SessionStatus = { state: 'listening', demo: false }
 const ctx: ContextFile = { name: 'interview-notes.md', path: '/tmp/interview-notes.md', size: 4200 }
@@ -62,6 +72,7 @@ export const FIXTURES: Record<string, ScreenState> = {
     error: { code: 'api', message: 'Too many OpenCode requests. Try again soon.' }
   },
   settings: { ...empty, settingsOpen: true, settings: { ...baseSettings, keys: { soniox: true, opencode: false } } },
+  monologue: { ...empty, status: listening, context: ctx, utterances: monologue, suggestion: { ...suggestion, utteranceId: 'm2' } },
   live: { ...empty, status: listening, context: ctx, utterances, suggestion }
 }
 

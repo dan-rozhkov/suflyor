@@ -368,4 +368,13 @@ describe('prompt hardening and length rules', () => {
     expect(sys).toMatch(/ONE sentence, at most 15 words/)
     expect(sys).toMatch(/Russian meaning as ONE short sentence, at most 15 words/)
   })
+  it('system message forbids invented commitments and memories', () => {
+    const sys = buildMessages('', [u('1', 'x')])[0].content
+    expect(sys).toMatch(/Use only facts from the context and the transcript/)
+    expect(sys).toMatch(/Never promise or state dates, deadlines, prices, discounts, trial extensions, early access, fixes or features/)
+    expect(sys).toMatch(/Never claim to remember/)
+    expect(sys).toMatch(/say you will check and come back/)
+    expect(sys.indexOf('Security:')).toBeGreaterThan(sys.indexOf('Never claim to remember'))
+    expect(sys.trimEnd().split('\n').at(-1)).toMatch(/^Security:/)
+  })
 })

@@ -11,7 +11,9 @@
  */
 import WebSocket from 'ws'
 import type { AppError, SessionStatus, Utterance } from '../shared/types'
+import { stripFillers } from './fillers'
 import { TokenAssembler, type SonioxToken } from './soniox-assembler'
+import { buildSonioxContext, type SonioxContext } from './soniox-context'
 
 /** Where the session reports to. Wired in src/main/ipc.ts to webContents.send. */
 export interface SessionSink {
@@ -49,6 +51,8 @@ export interface SessionDeps {
   demo: boolean
   /** Called whenever an utterance is created or updated (partial or final). */
   onUtterance(utterance: Utterance): void
+  /** Markdown context text for Soniox `context`. Read on every connect. */
+  getContextText?(): string
   tuning?: SessionTuning
 }
 
@@ -72,7 +76,7 @@ const BYTES_PER_MS = 32 // 16000 Hz * 2 bytes
 const TRANSCRIPT_LIMIT = 30
 const KEEP_LIMIT = 200
 
-export function sonioxConfig(model: string): Record<string, unknown> {
+export function sonioxConfig(model: string, context?: SonioxContext): Record<string, unknown> {
   return {
     model,
     audio_format: 'pcm_s16le',
@@ -80,7 +84,8 @@ export function sonioxConfig(model: string): Record<string, unknown> {
     num_channels: 1,
     language_hints: ['en'],
     enable_endpoint_detection: true,
-    translation: { type: 'one_way', target_language: 'ru' }
+    translation: { type: 'one_way', target_language: 'ru' },
+    ...(context ? { context } : {})
   }
 }
 
@@ -170,7 +175,18 @@ export function createSession(deps: SessionDeps): SessionController {
 
   /** `suggest=false`: update the UI but do not feed suggestions (teardown and failure flushes). */
   function publish(list: Utterance[], suggest = true): void {
-    for (const u of list) {
+    for (const raw of list) {
+      const en = stripFillers(raw.en)
+      const ru = stripFillers(raw.ru)
+      const fillerOnly = en.trim() === '' && raw.en.trim() !== ''
+      // Filler-only English with no row yet: nothing to show. With a row: keep the raw text so it does not go blank.
+      if (fillerOnly && !byId.has(raw.id)) continue
+      const u: Utterance = { ...raw, en: fillerOnly ? raw.en : en, ru }
+      if (fillerOnly) {
+        // UI keeps its row; suggestions and the transcript never see filler-only text.
+        deps.sink.utterance(u)
+        continue
+      }
       if (!byId.has(u.id)) {
         order.push(u.id)
         if (order.length > KEEP_LIMIT) byId.delete(order.shift() as string)
@@ -260,7 +276,7 @@ export function createSession(deps: SessionDeps): SessionController {
 
     sock.on('open', () => {
       if (myGen !== gen) return
-      sock.send(JSON.stringify(sonioxConfig(model)))
+      sock.send(JSON.stringify(sonioxConfig(model, buildSonioxContext(deps.getContextText?.() ?? ''))))
       wsOpen = true
       lastSend = Date.now()
       for (const b of buffered) sock.send(b)

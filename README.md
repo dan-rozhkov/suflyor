@@ -32,3 +32,13 @@ SUFLYOR_DEMO=1 npm run dev
 Audio is sent to Soniox, and transcripts and your context file are sent to OpenCode. Transcripts are not saved to disk. Check your local rules on recording and your employer's policies before using it on a call.
 
 The window asks macOS to exclude it from screen capture, but this is not guaranteed. Test it with your call app before sharing your screen.
+
+## Context file
+
+Pick a Markdown file in the app. Its full text goes to OpenCode for reply suggestions. A part of it also goes to Soniox as `context`, so names and terms are transcribed and translated correctly. See `docs/context-example.md`.
+
+- `## Call` (or `General`): bullets `- key: value`, up to 8 pairs.
+- `## Terms` (or `Glossary`): bullets `- Nimbus` for a term, `- manual tests = ручные тесты` for a fixed translation (`=`, `=>`, `→` and `->` work). `- Nimbus = Nimbus` keeps a name untranslated.
+- Everything else is free text.
+
+Soniox accepts about 8,000 tokens of context, so the text is cut to fit (Cyrillic counts double). Call pairs and terms are kept first, and the free text is trimmed. The context is read when a session starts or reconnects.

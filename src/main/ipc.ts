@@ -77,6 +77,7 @@ export async function registerIpc(getWindow: () => BrowserWindow | null, applyAl
       error: (e) => send(IPC.appError, e)
     },
     getSonioxKey: () => settings.getKey('soniox'),
+    getContextText: () => context.getText(),
     demo,
     onUtterance: (u) => suggestions.onUtterance(u)
   })

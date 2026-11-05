@@ -23,9 +23,11 @@ function useElapsed(active: boolean) {
 const enter = { initial: { opacity: 0, y: 12, filter: 'blur(4px)' }, animate: { opacity: 1, y: 0, filter: 'blur(0px)' }, exit: softExit, transition: spring }
 
 /** Idle: one full-width action. Running: suggest, timer, stop. */
-export function ControlBar({ state, action, canSuggest, suggesting, onStart, onStop, onSuggest }: {
+export function ControlBar({ state, action, done, canSuggest, suggesting, onStart, onStop, onSuggest }: {
   state: SessionState
   action?: { label: string; onClick(): void }
+  /** Settings are open: the bar closes them instead of controlling the session. */
+  done?(): void
   canSuggest: boolean
   suggesting: boolean
   onStart(): void
@@ -34,11 +36,11 @@ export function ControlBar({ state, action, canSuggest, suggesting, onStart, onS
 }) {
   const running = state !== 'idle' && state !== 'error'
   const elapsed = useElapsed(running)
-  const primary = action ?? { label: 'Start', onClick: onStart }
+  const primary = done ? { label: 'Done', onClick: done } : action ?? { label: 'Start', onClick: onStart }
   return (
     <div className="bar">
       <AnimatePresence mode="popLayout" initial={false}>
-        {running ? (
+        {running && !done ? (
           <motion.div key="live" className="bar-live" {...enter}>
             <Tip label="Suggest a reply">
               <motion.button type="button" className="bar-round" onClick={onSuggest} disabled={!canSuggest} whileTap={canSuggest ? tap : undefined} aria-label="Suggest a reply">
@@ -54,7 +56,7 @@ export function ControlBar({ state, action, canSuggest, suggesting, onStart, onS
             </motion.button>
           </motion.div>
         ) : (
-          <motion.button key="start" type="button" className="start" onClick={primary.onClick} whileTap={tap} {...enter}>
+          <motion.button key={primary.label} type="button" className="start" onClick={primary.onClick} whileTap={tap} {...enter}>
             {primary.label}
           </motion.button>
         )}

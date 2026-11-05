@@ -3,6 +3,7 @@ import type { Utterance } from '@shared/types'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowDownIcon } from './Icons'
 import { spring, tap } from '../motion'
+import { englishForHero, splitLast } from '../state/sentences'
 
 const NEAR_BOTTOM = 32
 
@@ -73,8 +74,7 @@ export function Transcript({ utterances, empty }: { utterances: Utterance[]; emp
             // Enter only: streaming text inside a reply must land instantly, so no layout animation here.
             return (
               <motion.article key={u.id} className={cls} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={spring}>
-                <p className="utt-ru" lang="ru">{u.ru || '…'}</p>
-                {latest && u.en && <p className="utt-en" lang="en">{u.en}</p>}
+                {latest ? <Latest ru={u.ru} en={u.en} /> : <p className="utt-ru" lang="ru">{u.ru || '…'}</p>}
               </motion.article>
             )
           })
@@ -98,5 +98,18 @@ export function Transcript({ utterances, empty }: { utterances: Utterance[]; emp
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+/** Latest utterance: earlier sentences stay muted, only the last one is hero size. Plain text, so streaming lands instantly. */
+function Latest({ ru, en }: { ru: string; en: string }) {
+  const { head, last } = splitLast(ru)
+  const enLast = englishForHero(ru, en)
+  return (
+    <>
+      {head && <p className="utt-ru" lang="ru">{head}</p>}
+      <p className="utt-ru utt-hero" lang="ru">{last || '…'}</p>
+      {enLast && <p className="utt-en" lang="en">{enLast}</p>}
+    </>
   )
 }

@@ -1,25 +1,25 @@
 import type { ReactNode, SVGProps } from 'react'
 
-function Svg({ children, ...p }: SVGProps<SVGSVGElement> & { children: ReactNode }) {
+/** Glyphs from the pen-editor icon set: 16 grid, closed shapes, round ends, constant 1.25px stroke. */
+function Svg({ name, children, ...p }: SVGProps<SVGSVGElement> & { name: string; children: ReactNode }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...p}>
+    <svg data-pen-icon={name} width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...p}>
       {children}
     </svg>
   )
 }
 export const SettingsIcon = () => (
-  <Svg viewBox="0 0 24 24" strokeWidth="2">
-    <path d="M11 10.27 7 3.34M11 13.73l-4 6.93M12 22v-2M12 2v2M14 12h8M17 20.66l-1-1.73M17 3.34l-1 1.73M2 12h2M20.66 17l-1.73-1M20.66 7l-1.73 1M3.34 17l1.73-1M3.34 7l1.73 1" />
-    <circle cx="12" cy="12" r="2" />
-    <circle cx="12" cy="12" r="8" />
+  <Svg name="Gear">
+    <path d="M6.55 3.53L6.67 1.74L9.33 1.74L9.45 3.53A4.7 4.7 0 0 1 11.14 4.51L12.76 3.72L14.09 6.02L12.6 7.02A4.7 4.7 0 0 1 12.6 8.98L14.09 9.98L12.76 12.28L11.14 11.49A4.7 4.7 0 0 1 9.45 12.47L9.33 14.26L6.67 14.26L6.55 12.47A4.7 4.7 0 0 1 4.86 11.49L3.24 12.28L1.91 9.98L3.4 8.98A4.7 4.7 0 0 1 3.4 7.02L1.91 6.02L3.24 3.72L4.86 4.51A4.7 4.7 0 0 1 6.55 3.53z" />
+    <circle cx="8" cy="8" r="2" />
   </Svg>
 )
-export const CloseIcon = () => (<Svg><path d="M4 4l8 8M12 4l-8 8" /></Svg>)
-export const CheckIcon = () => (<Svg><path d="M3.5 8.5l3 3 6-6.5" /></Svg>)
-export const FileIcon = () => (<Svg><path d="M4 2.5h5l3 3v8H4z" /><path d="M9 2.5v3h3" /></Svg>)
-export const ArrowDownIcon = () => (<Svg><path d="M8 3v10M4 9l4 4 4-4" /></Svg>)
-export const SparkIcon = () => (<Svg><path d="M8 2.5l1.4 4.1 4.1 1.4-4.1 1.4L8 13.5l-1.4-4.1L2.5 8l4.1-1.4z" /></Svg>)
-export const StopIcon = () => (<Svg><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" /></Svg>)
-export const ChevronIcon = () => (<Svg><path d="M4.5 6.5L8 10l3.5-3.5" /></Svg>)
-export const AlertIcon = () => (<Svg><path d="M8 4.5v4.2M8 11.2v.1" /></Svg>)
-export const RefreshIcon = () => (<Svg><path d="M12.8 8a4.8 4.8 0 1 1-1.4-3.4M12.8 2.8v2.6h-2.6" /></Svg>)
+export const CloseIcon = () => (<Svg name="X"><path d="M3.75 3.75l8.5 8.5M12.25 3.75l-8.5 8.5" /></Svg>)
+export const CheckIcon = () => (<Svg name="Check"><path d="M2.75 8.5l3.25 3.25 7.25-7.5" /></Svg>)
+export const FileIcon = () => (<Svg name="File"><path d="M9.25 2.25H5a1.5 1.5 0 0 0-1.5 1.5v8.5a1.5 1.5 0 0 0 1.5 1.5h6a1.5 1.5 0 0 0 1.5-1.5V5.5Z M9.25 2.25V5.5h3.25" /></Svg>)
+export const ArrowDownIcon = () => (<Svg name="ArrowDown"><path d="M8 2.75v10.5M3.5 8.75 8 13.25l4.5-4.5" /></Svg>)
+export const SparkIcon = () => (<Svg name="Sparkle"><path transform="translate(8 8) scale(1.07) translate(-8 -8)" d="M8 2.25Q9 7 13.75 8Q9 9 8 13.75Q7 9 2.25 8Q7 7 8 2.25Z" /></Svg>)
+export const StopIcon = () => (<Svg name="Stop"><rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.75" /></Svg>)
+export const ChevronIcon = () => (<Svg name="CaretDown"><path d="M4 6l4 4 4-4" /></Svg>)
+export const AlertIcon = () => (<Svg name="WarningCircle"><circle cx="8" cy="8" r="6" /><path d="M8 4.75v3.5M8 11v.01" /></Svg>)
+export const RefreshIcon = () => (<Svg name="ArrowClockwise"><path d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M11.7 1.8v2.5H9.2" /></Svg>)
