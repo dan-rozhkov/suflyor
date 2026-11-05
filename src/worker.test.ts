@@ -242,3 +242,151 @@ describe('worker /api/suggest', () => {
     expect(await res.text()).not.toContain('oc-key-xyz')
   })
 })
+
+describe('worker /api/chapters', () => {
+  const senv: Env = { ...env, OPENCODE_API_KEY: 'oc-key-xyz' }
+  const auth = { Authorization: 'Bearer fictional-code-0123456789abcdef' }
+  const post = (body: unknown, e: Env = senv, headers: Record<string, string> = auth): Promise<Response> =>
+    call({ path: '/api/chapters', headers, body: typeof body === 'string' ? body : JSON.stringify(body) }, e)
+  const answer = (content: unknown = '0 | Запуск проекта\n2 | Цена'): Response =>
+    new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })
+  const sent = (f: ReturnType<typeof vi.fn>, n: number): Record<string, unknown> =>
+    JSON.parse((f.mock.calls[n] as unknown as [string, RequestInit])[1].body as string)
+
+  it('gives 405 for the wrong method', async () => {
+    const res = await call({ path: '/api/chapters', method: 'GET' }, senv)
+    expect(res.status).toBe(405)
+    expect(res.headers.get('Allow')).toBe('POST')
+  })
+
+  it('refuses a missing or wrong code without calling upstream', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    for (const h of [{} as Record<string, string>, { Authorization: 'Bearer nope' }]) {
+      const res = await post({ paragraphs: ['a'] }, senv, h)
+      expect(res.status).toBe(401)
+      expect(await res.json()).toEqual({ error: 'bad-code' })
+    }
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 503 when the OpenCode key is not set', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const res = await post({ paragraphs: ['a'] }, env)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'no-suggest-key' })
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 413 for a declared or real size over 200 KB', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const real = await post({ paragraphs: ['x'.repeat(200 * 1024 + 1)] })
+    expect(real.status).toBe(413)
+    const declared = await post({ paragraphs: ['a'] }, senv, { ...auth, 'Content-Length': String(200 * 1024 + 1) })
+    expect(declared.status).toBe(413)
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 400 for bad bodies without calling upstream', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const bad: unknown[] = [
+      'not json', 'null', {}, { paragraphs: 'a' }, { paragraphs: [1] }, { paragraphs: [] },
+      { paragraphs: Array.from({ length: 151 }, () => 'a') },
+      { paragraphs: ['x'.repeat(1001)] },
+      { paragraphs: ['a'], openTitle: 5 },
+      { paragraphs: ['a'], openTitle: 't'.repeat(61) }
+    ]
+    for (const b of bad) {
+      const res = await post(b)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'bad-request' })
+    }
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('accepts the limits exactly', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => answer()))
+    const a = await post({ paragraphs: Array.from({ length: 150 }, () => 'я'.repeat(80)), openTitle: 't'.repeat(60) })
+    expect(a.status).toBe(200)
+    const b = await post({ paragraphs: Array.from({ length: 12 }, () => 'я'.repeat(1000)) })
+    expect(b.status).toBe(200)
+    const over = await post({ paragraphs: [...Array.from({ length: 12 }, () => 'я'.repeat(1000)), 'я'] })
+    expect(over.status).toBe(400)
+  })
+
+  it('returns parsed chapters with a non-streaming request that carries the key only to OpenCode', async () => {
+    const f = vi.fn(async () => answer())
+    vi.stubGlobal('fetch', f)
+    const res = await post({ paragraphs: ['Привет.', 'Дальше.', 'Цена.'], openTitle: 'Запуск проекта', model: 'evil', stream: true })
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(JSON.parse(text)).toEqual({ chapters: [{ start: 0, title: 'Запуск проекта' }, { start: 2, title: 'Цена' }] })
+    expect(text).not.toContain('oc-key-xyz')
+    expect(f).toHaveBeenCalledTimes(1)
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe(OPENCODE_CHAT_URL)
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer oc-key-xyz')
+    const body = sent(f, 0)
+    expect(body.model).toBe('deepseek-v4.1-flash')
+    expect(body.stream).toBe(false)
+    expect(body.max_tokens).toBe(400)
+    expect(body.temperature).toBe(0.2)
+    expect(body.reasoning_effort).toBe('none')
+    expect(JSON.stringify(body.messages)).toContain('[2] Цена.')
+    expect(JSON.stringify(body.messages)).toContain('Запуск проекта')
+  })
+
+  it('retries once without reasoning_effort after a 400', async () => {
+    const f = vi.fn().mockResolvedValueOnce(new Response('bad', { status: 400 })).mockResolvedValueOnce(answer())
+    vi.stubGlobal('fetch', f)
+    const res = await post({ paragraphs: ['a', 'b', 'c'] })
+    expect(res.status).toBe(200)
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(sent(f, 0).reasoning_effort).toBe('none')
+    expect('reasoning_effort' in sent(f, 1)).toBe(false)
+    expect(sent(f, 1).stream).toBe(false)
+  })
+
+  it('gives 502 for upstream errors, bad JSON, no content or no chapters', async () => {
+    const cases: Response[] = [
+      new Response('boom oc-key-xyz', { status: 500 }),
+      new Response('boom', { status: 400 }),
+      new Response('not json', { status: 200 }),
+      new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+      answer(''),
+      answer(null),
+      answer('no chapters here'),
+      answer('7 | Вне диапазона')
+    ]
+    for (const r of cases) {
+      vi.stubGlobal('fetch', vi.fn(async () => r.clone()))
+      const res = await post({ paragraphs: ['a', 'b'] })
+      expect(res.status).toBe(502)
+      const text = await res.text()
+      expect(JSON.parse(text)).toEqual({ error: 'upstream' })
+      expect(text).not.toContain('oc-key-xyz')
+    }
+  })
+
+  it('gives 502 when the upstream fetch throws', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('boom oc-key-xyz') }))
+    const res = await post({ paragraphs: ['a'] })
+    expect(res.status).toBe(502)
+    expect(await res.text()).not.toContain('oc-key-xyz')
+  })
+
+  it('leaves the suggest request unchanged', async () => {
+    const f = vi.fn(async () => new Response('data: [DONE]\n\n', { status: 200 }))
+    vi.stubGlobal('fetch', f)
+    const res = await call({ path: '/api/suggest', headers: auth, body: JSON.stringify({ lines: ['hi'] }) }, senv)
+    expect(res.status).toBe(200)
+    const body = sent(f, 0)
+    expect(body.stream).toBe(true)
+    expect(body.max_tokens).toBe(700)
+    expect(body.temperature).toBe(0.7)
+    expect(Object.keys(body).sort()).toEqual(['max_tokens', 'messages', 'model', 'reasoning_effort', 'stream', 'temperature'])
+  })
+})

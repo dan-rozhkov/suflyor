@@ -1,6 +1,8 @@
 import { SONIOX_TEMP_KEY_URL } from './soniox-url'
 import { OPENCODE_CHAT_URL } from './opencode-url'
-import { buildMessages } from './suggest-prompt'
+import { buildMessages, type ChatMessage } from './suggest-prompt'
+import { buildChapterMessages, parseChapters } from './chapters-prompt'
+import { MAX_CHAPTER_PARAGRAPHS, MAX_CHAPTER_PARAGRAPH_CHARS, MAX_CHAPTER_TITLE_CHARS, MAX_CHAPTER_WINDOW_CHARS } from './chapters-limits'
 
 export interface Env {
   SONIOX_API_KEY: string
@@ -64,22 +66,42 @@ const MAX_LINE_CHARS = 2000
 const MAX_CONTEXT_IN = 120_000
 const SUGGEST_MODEL = 'deepseek-v4.1-flash'
 
-async function callOpenCode(key: string, messages: unknown, withReasoning: boolean): Promise<Response> {
+interface CallOptions {
+  stream: boolean
+  maxTokens: number
+  temperature: number
+}
+
+const SUGGEST_CALL: CallOptions = { stream: true, maxTokens: 700, temperature: 0.7 }
+const CHAPTERS_CALL: CallOptions = { stream: false, maxTokens: 400, temperature: 0.2 }
+
+function callOpenCode(key: string, messages: ChatMessage[], opts: CallOptions, withReasoning: boolean): Promise<Response> {
   return fetch(OPENCODE_CHAT_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: SUGGEST_MODEL,
       messages,
-      stream: true,
-      max_tokens: 700,
-      temperature: 0.7,
+      stream: opts.stream,
+      max_tokens: opts.maxTokens,
+      temperature: opts.temperature,
       ...(withReasoning ? { reasoning_effort: 'none' } : {})
     })
   })
 }
 
-async function handleSuggest(request: Request, env: Env): Promise<Response> {
+/** Ask with reasoning off; on a 400 ask once more without that field. */
+async function askOpenCode(key: string, messages: ChatMessage[], opts: CallOptions): Promise<Response> {
+  let res = await callOpenCode(key, messages, opts, true)
+  if (res.status === 400) {
+    void res.body?.cancel()
+    res = await callOpenCode(key, messages, opts, false)
+  }
+  return res
+}
+
+/** The checks every model route shares. Gives the OpenCode key and the raw body, or the refusal. */
+async function readModelRequest(request: Request, env: Env): Promise<{ key: string; raw: string } | Response> {
   if (request.method !== 'POST') return json({ error: 'method-not-allowed' }, 405, { Allow: 'POST' })
   if (!(await codeMatches(bearer(request), env.ACCESS_CODE))) return json({ error: 'bad-code' }, 401)
   const key = env.OPENCODE_API_KEY
@@ -88,6 +110,13 @@ async function handleSuggest(request: Request, env: Env): Promise<Response> {
   if (declared > MAX_BODY_BYTES) return json({ error: 'too-large' }, 413)
   const raw = await request.text()
   if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return json({ error: 'too-large' }, 413)
+  return { key, raw }
+}
+
+async function handleSuggest(request: Request, env: Env): Promise<Response> {
+  const read = await readModelRequest(request, env)
+  if (read instanceof Response) return read
+  const { key, raw } = read
   let lines: string[]
   let context = ''
   try {
@@ -103,11 +132,7 @@ async function handleSuggest(request: Request, env: Env): Promise<Response> {
   }
   const messages = buildMessages(context, lines)
   try {
-    let res = await callOpenCode(key, messages, true)
-    if (res.status === 400) {
-      void res.body?.cancel()
-      res = await callOpenCode(key, messages, false)
-    }
+    const res = await askOpenCode(key, messages, SUGGEST_CALL)
     if (!res.ok || !res.body) {
       void res.body?.cancel()
       return json({ error: 'upstream' }, 502)
@@ -118,11 +143,50 @@ async function handleSuggest(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function handleChapters(request: Request, env: Env): Promise<Response> {
+  const read = await readModelRequest(request, env)
+  if (read instanceof Response) return read
+  const { key, raw } = read
+  let paragraphs: string[]
+  let openTitle = ''
+  try {
+    const body = JSON.parse(raw) as { paragraphs?: unknown; openTitle?: unknown }
+    if (!body || !Array.isArray(body.paragraphs) || !body.paragraphs.every((p) => typeof p === 'string')) throw new Error('paragraphs')
+    paragraphs = body.paragraphs as string[]
+    if (body.openTitle !== undefined && body.openTitle !== null) {
+      if (typeof body.openTitle !== 'string' || body.openTitle.length > MAX_CHAPTER_TITLE_CHARS) throw new Error('openTitle')
+      openTitle = body.openTitle
+    }
+    if (!paragraphs.length || paragraphs.length > MAX_CHAPTER_PARAGRAPHS || paragraphs.some((p) => p.length > MAX_CHAPTER_PARAGRAPH_CHARS) || paragraphs.join('').length > MAX_CHAPTER_WINDOW_CHARS) {
+      throw new Error('limits')
+    }
+  } catch {
+    return json({ error: 'bad-request' }, 400)
+  }
+  const messages = buildChapterMessages(paragraphs, openTitle)
+  try {
+    const res = await askOpenCode(key, messages, CHAPTERS_CALL)
+    if (!res.ok) {
+      void res.body?.cancel()
+      return json({ error: 'upstream' }, 502)
+    }
+    const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
+    const content = data?.choices?.[0]?.message?.content
+    if (typeof content !== 'string' || !content) return json({ error: 'upstream' }, 502)
+    const chapters = parseChapters(content, paragraphs.length)
+    if (!chapters.length) return json({ error: 'upstream' }, 502)
+    return json({ chapters }, 200)
+  } catch {
+    return json({ error: 'upstream' }, 502)
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url)
     if (pathname === '/api/token') return handleToken(request, env)
     if (pathname === '/api/suggest') return handleSuggest(request, env)
+    if (pathname === '/api/chapters') return handleChapters(request, env)
     return json({ error: 'not-found' }, 404)
   }
 }

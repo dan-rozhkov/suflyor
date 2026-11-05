@@ -26,12 +26,18 @@ function sentenceStarts(src: string): number[] {
   return starts
 }
 
+/** Index in `starts` of the hero sentence: the last one, merged with earlier ones while it is shorter than MIN_HERO. */
+function heroIndex(src: string, starts: number[]): number {
+  let i = starts.length - 1
+  while (i > 0 && src.length - starts[i] < MIN_HERO) i--
+  return i
+}
+
 /** Splits the last sentence off `text`. head + ' ' + last equals the trimmed input apart from the join whitespace. */
 export function splitLast(text: string): { head: string; last: string } {
   const src = text.trim()
   const starts = sentenceStarts(src)
-  let i = starts.length - 1
-  while (i > 0 && src.length - starts[i] < MIN_HERO) i--
+  const i = heroIndex(src, starts)
   if (i === 0) return { head: '', last: src }
   return { head: src.slice(0, starts[i]).trim(), last: src.slice(starts[i]).trim() }
 }
@@ -64,19 +70,32 @@ export const PARAGRAPH_CHARS = 160
  * PARAGRAPH_CHARS. Earlier paragraphs stay the same while the text grows; only the last one changes.
  */
 export function paragraphs(text: string): string[] {
+  return paragraphParts(text).map(({ done, live }) => (done && live ? `${done} ${live}` : done || live))
+}
+
+/**
+ * The same paragraphs as `paragraphs`, each split into `done` (sentences before the hero start) and `live`
+ * (the sentences from the hero start on). A sentence moves from live to done inside one paragraph.
+ */
+export function paragraphParts(text: string): { done: string; live: string }[] {
   const src = text.trim()
   if (!src) return []
   const starts = sentenceStarts(src)
-  const out: string[] = []
-  let current = ''
+  const hero = heroIndex(src, starts)
+  const out: { done: string; live: string }[] = []
+  let done = ''
+  let live = ''
+  const join = (a: string, b: string): string => (a ? `${a} ${b}` : b)
   for (let i = 0; i < starts.length; i++) {
     const sentence = src.slice(starts[i], starts[i + 1]).trim()
-    current = current ? `${current} ${sentence}` : sentence
-    if (current.length >= PARAGRAPH_CHARS) {
-      out.push(current)
-      current = ''
+    if (i >= hero) live = join(live, sentence)
+    else done = join(done, sentence)
+    if (join(done, live).length >= PARAGRAPH_CHARS) {
+      out.push({ done, live })
+      done = ''
+      live = ''
     }
   }
-  if (current) out.push(current)
+  if (done || live) out.push({ done, live })
   return out
 }

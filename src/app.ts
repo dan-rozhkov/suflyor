@@ -2,7 +2,7 @@ import '@fontsource-variable/nunito'
 import './tokens.css'
 import './app.css'
 import type { Utterance } from './types'
-import { englishForHero, paragraphs, splitLast } from './sentences'
+import { englishForHero, paragraphParts, paragraphs } from './sentences'
 import { createSonioxClient } from './soniox'
 import { canAddToHomeScreen, isStandalone } from './install'
 import { startMic } from './mic'
@@ -11,6 +11,7 @@ import { BAD_CODE_MESSAGE, fetchToken } from './token'
 import { loadContext, saveContext } from './context'
 import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
+import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const formEl = $<HTMLFormElement>('code-form')
@@ -18,6 +19,7 @@ const codeEl = $<HTMLInputElement>('code')
 const codeErrorEl = $<HTMLElement>('code-error')
 const feedWrapEl = $<HTMLElement>('feed-wrap')
 const feedEl = $<HTMLElement>('feed')
+const chaptersEl = $<HTMLElement>('chapters')
 const toggleEl = $<HTMLButtonElement>('toggle')
 const statusEl = $<HTMLElement>('status')
 const statusIconEl = $<HTMLElement>('status-icon')
@@ -118,6 +120,9 @@ let order: Utterance[] = []
 /** Index in `order` where the current run began: earlier calls are not sent for replies. */
 let runStart = 0
 let lastState: SessionState | undefined
+/** When each paragraph of each utterance first appeared. Never changes afterwards, even if the text is revised. */
+const stamps = new Map<string, number[]>()
+let chapters: Chapter[] = []
 
 stopEl.innerHTML = STOP_ICON
 sparkEl.innerHTML = SPARK_ICON
@@ -328,31 +333,58 @@ function renderEmpty(): void {
   )
 }
 
+const clockFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+const clockShortFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+
+/** Stamps of the first `count` paragraphs of an utterance; a paragraph seen for the first time gets the current time. */
+function stampsFor(id: string, count: number): number[] {
+  let list = stamps.get(id)
+  if (!list) stamps.set(id, (list = []))
+  while (list.length < count) list.push(Date.now())
+  return list
+}
+
 function paintRow(row: HTMLElement, u: Utterance, latest: boolean): void {
   row.className = `utt${latest ? ' utt-latest' : ''}${u.isFinal ? '' : ' partial'}`
-  const make = (cls: string, lang: string, text: string): HTMLElement => {
+  const parts = u.ru.trim() ? paragraphParts(u.ru) : [{ done: '', live: '' }]
+  const empty = !u.ru.trim()
+  const times = stampsFor(u.id, parts.length)
+  const out: HTMLElement[] = parts.map((part, i) => {
     const p = document.createElement('p')
-    p.className = cls
-    p.lang = lang
-    p.textContent = text
+    p.className = 'utt-ru'
+    p.lang = 'ru'
+    const time = document.createElement('time')
+    time.className = 'utt-time'
+    time.dateTime = new Date(times[i]).toISOString()
+    time.textContent = clockFmt.format(times[i])
+    p.append(time)
+    if (!latest) {
+      p.append(empty ? '…' : [part.done, part.live].filter(Boolean).join(' '))
+      return p
+    }
+    if (part.done) p.append(`${part.done} `)
+    const live = document.createElement('span')
+    live.className = 'utt-live'
+    live.textContent = empty ? '…' : part.live
+    if (part.live || empty) p.append(live)
     return p
+  })
+  if (latest) {
+    const en = englishForHero(u.ru, u.en)
+    if (en) {
+      const p = document.createElement('p')
+      p.className = 'utt-en'
+      p.lang = 'en'
+      p.textContent = en
+      out.push(p)
+    }
   }
-  const paras = (text: string): HTMLElement[] => paragraphs(text).map((t) => make('utt-ru', 'ru', t))
-  if (!latest) {
-    row.replaceChildren(...(u.ru.trim() ? paras(u.ru) : [make('utt-ru', 'ru', '…')]))
-    return
-  }
-  const { head, last } = splitLast(u.ru)
-  const en = englishForHero(u.ru, u.en)
-  const parts: HTMLElement[] = [...paras(head)]
-  parts.push(make('utt-ru utt-hero', 'ru', last || '…'))
-  if (en) parts.push(make('utt-en', 'en', en))
-  row.replaceChildren(...parts)
+  row.replaceChildren(...out)
 }
 
 function renderUtterances(list: Utterance[]): void {
   if (!code) return // Forget code: late text from the closing session stays forgotten.
-  const stick = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40
+  const stick = !jumping() && feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40
   if (!order.length) feedEl.replaceChildren()
   const previousLatest = order[order.length - 1]
   for (const u of list) {
@@ -378,12 +410,19 @@ function renderUtterances(list: Utterance[]): void {
   }
   if (stick) feedEl.scrollTop = feedEl.scrollHeight
   renderSuggestButton()
+  chapterer.onText(order.slice(runStart).reduce((n, u) => n + u.ru.length, 0))
+  scheduleCurrent()
 }
 
 /* The dark area grows and shrinks the feed: keep it pinned to the bottom when it was there. */
 let pinned = true
+/** While a smooth jump starts the feed is still at the bottom, and new text must not pull it back. */
+const JUMP_MS = 1000
+let jumpUntil = 0
+let jumpTimer: number | undefined
+const jumping = (): boolean => performance.now() < jumpUntil
 feedEl.addEventListener('scroll', () => {
-  pinned = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40
+  pinned = !jumping() && feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40
 })
 if (typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(() => {
@@ -392,12 +431,194 @@ if (typeof ResizeObserver !== 'undefined') {
 }
 
 function clearFeed(): void {
+  chapterer.reset()
+  chapters = []
+  stamps.clear()
+  closeRail()
+  renderChapters()
   rows.clear()
   order = []
   runStart = 0
   renderEmpty()
   renderSuggestButton()
 }
+
+/* chapters */
+
+function currentParagraphs(): ChapterPara[] {
+  const out: ChapterPara[] = []
+  for (const u of order.slice(runStart)) {
+    const times = stamps.get(u.id) ?? []
+    paragraphs(u.ru).forEach((text, i) => out.push({ key: { id: u.id, para: i }, text, at: times[i] ?? Date.now() }))
+  }
+  return out
+}
+
+const chapterer = createChapterer({
+  getCode: () => code,
+  getParagraphs: currentParagraphs,
+  onChange: (list) => {
+    chapters = list
+    renderChapters()
+    scheduleCurrent()
+  }
+})
+
+const hoverNone = window.matchMedia('(hover: none)')
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+const JUMP_OFFSET = 56
+const CURRENT_OFFSET = 72
+let chapterBtns: HTMLButtonElement[] = []
+let currentChapter = -1
+let currentFrame = 0
+const latestBtn = document.createElement('button')
+latestBtn.type = 'button'
+latestBtn.className = 'ch-row ch-latest'
+latestBtn.hidden = true
+const latestLabel = document.createElement('span')
+latestLabel.className = 'ch-latest-label'
+latestLabel.textContent = 'Latest'
+latestBtn.append(latestLabel)
+
+function railOpen(): boolean {
+  return chaptersEl.classList.contains('open')
+}
+
+function closeRail(): void {
+  chaptersEl.classList.remove('open')
+  if (chaptersEl.contains(document.activeElement)) (document.activeElement as HTMLElement).blur()
+}
+
+/** On a phone the first tap only opens the rail; the next tap acts. Returns true when the tap was used to open. */
+function openedByTap(e: Event): boolean {
+  if (!hoverNone.matches || railOpen()) return false
+  e.preventDefault()
+  chaptersEl.classList.add('open')
+  revealCurrent()
+  return true
+}
+
+function paragraphEl(c: Chapter): HTMLElement | null {
+  const row = rows.get(c.key.id)
+  if (!row) return null
+  return (row.children[c.key.para] as HTMLElement | undefined) ?? row
+}
+
+function jumpTo(c: Chapter): void {
+  const el = paragraphEl(c)
+  if (!el) return
+  jumpUntil = performance.now() + JUMP_MS
+  pinned = false
+  // A jump can end at the bottom, or not scroll at all: no scroll event would say so.
+  window.clearTimeout(jumpTimer)
+  jumpTimer = window.setTimeout(() => {
+    pinned = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 40
+    scheduleCurrent()
+  }, JUMP_MS)
+  const top = el.getBoundingClientRect().top - feedEl.getBoundingClientRect().top + feedEl.scrollTop - JUMP_OFFSET
+  feedEl.scrollTo({ top: Math.max(0, top), behavior: reducedMotion.matches ? 'auto' : 'smooth' })
+}
+
+function newChapterBtn(): HTMLButtonElement {
+  const b = document.createElement('button')
+  b.type = 'button'
+  b.className = 'ch-row'
+  const title = document.createElement('span')
+  title.className = 'ch-title'
+  title.lang = 'ru'
+  const time = document.createElement('span')
+  time.className = 'ch-time'
+  const dash = document.createElement('span')
+  dash.className = 'ch-dash'
+  dash.setAttribute('aria-hidden', 'true')
+  b.append(title, time, dash)
+  b.addEventListener('click', (e) => {
+    if (openedByTap(e)) return
+    const c = chapters[chapterBtns.indexOf(b)]
+    if (c) jumpTo(c)
+    if (hoverNone.matches) closeRail()
+  })
+  return b
+}
+
+/* Rows are updated in place, so hover and focus survive a new title. */
+function renderChapters(): void {
+  chaptersEl.hidden = chapters.length === 0
+  // Rows go before this button, so it must be in the rail first.
+  if (!latestBtn.parentElement) chaptersEl.append(latestBtn)
+  while (chapterBtns.length < chapters.length) {
+    const b = newChapterBtn()
+    chapterBtns.push(b)
+    chaptersEl.insertBefore(b, latestBtn)
+  }
+  while (chapterBtns.length > chapters.length) chapterBtns.pop()!.remove()
+  chapters.forEach((c, i) => {
+    const [title, time] = chapterBtns[i].children as unknown as HTMLElement[]
+    if (title.textContent !== c.title) title.textContent = c.title
+    const t = clockShortFmt.format(c.at)
+    if (time.textContent !== t) time.textContent = t
+  })
+  currentChapter = -1
+  updateCurrent()
+}
+
+function updateCurrent(): void {
+  latestBtn.hidden = pinned
+  const feedTop = feedEl.getBoundingClientRect().top
+  let cur = 0
+  chapters.forEach((c, i) => {
+    const el = paragraphEl(c)
+    if (el && el.getBoundingClientRect().top - feedTop <= CURRENT_OFFSET) cur = i
+  })
+  // At the bottom the reader is in the newest chapter, even when it starts lower on the screen.
+  if (pinned) cur = chapters.length - 1
+  if (cur === currentChapter || !chapterBtns.length) return
+  currentChapter = cur
+  chapterBtns.forEach((b, i) => {
+    if (i === cur) b.setAttribute('aria-current', 'true')
+    else b.removeAttribute('aria-current')
+  })
+  revealCurrent()
+}
+
+/** Keep the current row in view when the rail scrolls. */
+function revealCurrent(): void {
+  const b = chapterBtns[currentChapter]
+  if (!b) return
+  if (b.offsetTop < chaptersEl.scrollTop) chaptersEl.scrollTop = b.offsetTop
+  else if (b.offsetTop + b.offsetHeight > chaptersEl.scrollTop + chaptersEl.clientHeight)
+    chaptersEl.scrollTop = b.offsetTop + b.offsetHeight - chaptersEl.clientHeight
+}
+
+function scheduleCurrent(): void {
+  if (currentFrame) return
+  currentFrame = requestAnimationFrame(() => {
+    currentFrame = 0
+    updateCurrent()
+  })
+}
+
+latestBtn.addEventListener('click', (e) => {
+  if (openedByTap(e)) return
+  // At once: text arriving during a smooth scroll would leave the feed short of the bottom.
+  jumpUntil = 0
+  window.clearTimeout(jumpTimer)
+  feedEl.scrollTop = feedEl.scrollHeight
+  pinned = true
+  scheduleCurrent()
+  if (hoverNone.matches) closeRail()
+})
+feedEl.addEventListener('scroll', scheduleCurrent)
+// Rows are taller in the open rail, so the position set while it was closed is off.
+chaptersEl.addEventListener('transitionend', (e) => {
+  if (e.target === chaptersEl && e.propertyName === 'width') revealCurrent()
+})
+document.addEventListener('pointerdown', (e) => {
+  if (railOpen() && !chaptersEl.contains(e.target as Node)) closeRail()
+})
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && (railOpen() || chaptersEl.contains(document.activeElement))) closeRail()
+})
 
 /* status, timer, diagnostics */
 
@@ -509,6 +730,7 @@ function onState(s: SessionState): void {
   waveEl.classList.toggle('wave-idle', s.phase !== 'listening')
   toggleEl.disabled = !code
   stopEl.disabled = s.phase === 'stopping'
+  if (!running && wasRunning && s.message !== BAD_CODE_MESSAGE) chapterer.flush()
   renderSuggestButton()
   if (running && !wasRunning) stopEl.focus()
   if (!running && wasRunning && darkHadFocus) toggleEl.focus()
@@ -835,6 +1057,7 @@ toggleEl.addEventListener('click', () => {
   peak = 0
   notice = ''
   runStart = order.length
+  chapterer.startRun()
   renderDiag()
   // Start first: the microphone must be requested inside this tap.
   void session.start()

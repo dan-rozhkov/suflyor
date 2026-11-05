@@ -1,6 +1,6 @@
 import { SseSplitter, SuggestionParser, extractDelta } from './suggestions-parser'
 import { MAX_CONTEXT_CHARS, MAX_LINES } from './suggest-prompt'
-import { BAD_CODE_MESSAGE } from './token'
+import { BAD_CODE_MESSAGE, isHeaderSafe } from './token'
 
 export const SUGGEST_TIMEOUT_MESSAGE = 'The replies are not responding. Try again.'
 export const SUGGEST_NOT_SET_UP_MESSAGE = 'Reply suggestions are not set up yet.'
@@ -62,8 +62,7 @@ export function createSuggester(deps: SuggesterDeps): Suggester {
       }, SUGGEST_IDLE_MS)
     }
     const code = deps.getCode()
-    // A header cannot carry other characters, and fetch would report that as a network failure.
-    if (!/^[\x21-\x7e]+$/.test(code)) {
+    if (!isHeaderSafe(code)) {
       fail(BAD_CODE_MESSAGE, true)
       return
     }

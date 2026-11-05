@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countSentences, englishForHero, paragraphs, splitLast } from './sentences'
+import { countSentences, englishForHero, paragraphParts, paragraphs, splitLast } from './sentences'
 
 describe('splitLast', () => {
   it('returns the whole text when there is no boundary', () => {
@@ -176,5 +176,63 @@ describe('paragraphs', () => {
 
   it('does not split on abbreviations', () => {
     expect(paragraphs('Спросите д-ра Иванова, т. е. нашего врача, и г. Петрова. Dr. Smith and e.g. Mr. Jones agreed.')).toHaveLength(1)
+  })
+})
+
+describe('paragraphParts', () => {
+  const join = (parts: { done: string; live: string }[]): string[] => parts.map((p) => [p.done, p.live].filter(Boolean).join(' '))
+
+  it('is empty for empty text', () => {
+    expect(paragraphParts('')).toEqual([])
+    expect(paragraphParts('   ')).toEqual([])
+  })
+
+  it('puts a single sentence into live', () => {
+    expect(paragraphParts('Мы запустили новый тариф для всех клиентов')).toEqual([
+      { done: '', live: 'Мы запустили новый тариф для всех клиентов' }
+    ])
+  })
+
+  it('splits done and live inside one paragraph', () => {
+    const text = 'Мы запустили новый тариф. Клиенты пока осторожничают. Что вы думаете об этом решении?'
+    expect(paragraphParts(text)).toEqual([
+      { done: 'Мы запустили новый тариф. Клиенты пока осторожничают.', live: 'Что вы думаете об этом решении?' }
+    ])
+  })
+
+  it('merges a short tail into the sentence before it', () => {
+    const text = 'Мы запустили новый тариф для всех клиентов. Хорошо. Да.'
+    expect(paragraphParts(text)).toEqual([{ done: '', live: text }])
+    const longer = 'Первое предложение уже закончилось. Мы запустили новый тариф для всех. Да.'
+    expect(paragraphParts(longer)).toEqual([
+      { done: 'Первое предложение уже закончилось.', live: 'Мы запустили новый тариф для всех. Да.' }
+    ])
+  })
+
+  it('keeps the hero across a paragraph boundary', () => {
+    const a = 'Первое длинное предложение про планы на квартал и про то, как мы собираемся их выполнять вместе.'
+    const b = 'Второе длинное предложение про бюджет и сроки, которые нам придется согласовать со всеми участниками.'
+    const c = 'Третье предложение идет дальше и оно еще не закончено'
+    const parts = paragraphParts(`${a} ${b} ${c}`)
+    expect(parts).toEqual([
+      { done: `${a} ${b}`, live: '' },
+      { done: '', live: c }
+    ])
+  })
+
+  it('has live in the first paragraph when the hero starts before the boundary', () => {
+    const a = 'Первое длинное предложение про планы на квартал и про то, как мы собираемся их выполнять вместе.'
+    const b = 'Второе длинное предложение про бюджет и сроки, которые нам придется согласовать со всеми участниками.'
+    const parts = paragraphParts(`${a} ${b}`)
+    expect(parts).toEqual([{ done: a, live: b }])
+  })
+
+  it('joins to the same paragraphs as paragraphs()', () => {
+    const sentence = 'Это достаточно длинное предложение для проверки группировки по абзацам в ленте.'
+    for (let n = 1; n <= 9; n++) {
+      const text = Array.from({ length: n }, (_, i) => `${sentence} ${i}`.replace(/ (\d)$/, ' номер $1.')).join(' ')
+      expect(join(paragraphParts(text))).toEqual(paragraphs(text))
+    }
+    expect(join(paragraphParts('Да. Нет. Может быть, посмотрим позже. Хорошо.'))).toEqual(paragraphs('Да. Нет. Может быть, посмотрим позже. Хорошо.'))
   })
 })

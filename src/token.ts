@@ -4,6 +4,9 @@ export const BAD_CODE_MESSAGE = 'This access code is wrong.'
 
 const TOKEN_TIMEOUT_MS = 8000
 
+/** A header cannot carry other characters, and fetch would report that as a network failure. */
+export const isHeaderSafe = (code: string): boolean => /^[\x21-\x7e]+$/.test(code)
+
 export class TokenError extends Error {
   constructor(
     readonly kind: TokenErrorKind,
@@ -17,7 +20,7 @@ export class TokenError extends Error {
 /** Ask the Worker for a short-lived Soniox key. */
 export async function fetchToken(code: string, fetchImpl: typeof fetch = (...a) => fetch(...a)): Promise<string> {
   // A header cannot carry other characters, and fetch would report that as a network failure.
-  if (!/^[\x21-\x7e]+$/.test(code)) throw new TokenError('bad-code', BAD_CODE_MESSAGE)
+  if (!isHeaderSafe(code)) throw new TokenError('bad-code', BAD_CODE_MESSAGE)
   let res: Response
   try {
     res = await fetchImpl('/api/token', {
