@@ -57,11 +57,21 @@ export function readEnvFile(path: string): Record<string, string> {
 
 const ENV_NAMES: Record<KeyName, string> = { soniox: 'SONIOX_API_KEY', opencode: 'OPENCODE_API_KEY' }
 
+/** Dev keys: the process environment (e.g. `infisical run`) wins over the .env file. Empty values do not count. */
+export function devEnv(file: Record<string, string>, processEnv: Record<string, string | undefined>): Record<string, string> {
+  const out = { ...file }
+  for (const name of Object.values(ENV_NAMES)) {
+    const value = processEnv[name]
+    if (value) out[name] = value
+  }
+  return out
+}
+
 export interface SettingsStoreOptions {
   /** Absolute path to settings.json (inside userData). */
   filePath: string
   cipher: SecretCipher
-  /** Dev-only fallback values (from project .env). Pass {} in production. */
+  /** Dev-only fallback values (process environment and project .env). Pass {} in production. */
   envFallback?: Record<string, string>
 }
 

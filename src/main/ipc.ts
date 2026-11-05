@@ -8,7 +8,7 @@ import { createConversation } from './conversation'
 import { stripFillers } from './fillers'
 import { createMicController, createMicFeed } from './mic'
 import { createSession } from './session'
-import { createSettingsStore, readEnvFile, SettingsError } from './settings'
+import { createSettingsStore, devEnv, readEnvFile, SettingsError } from './settings'
 import { createSuggestions } from './suggestions'
 
 const SCREEN_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
@@ -33,7 +33,7 @@ export async function registerIpc(getWindow: () => BrowserWindow | null, applyAl
       encrypt: (s) => safeStorage.encryptString(s),
       decrypt: (b) => safeStorage.decryptString(b)
     },
-    envFallback: app.isPackaged ? {} : readEnvFile(join(app.getAppPath(), '.env'))
+    envFallback: app.isPackaged ? {} : devEnv(readEnvFile(join(app.getAppPath(), '.env')), process.env)
   })
 
   const context = createContextStore({

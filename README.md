@@ -19,6 +19,12 @@ cp .env.example .env                    # or paste the keys in Settings
 npm run dev
 ```
 
+With Infisical, skip `.env`: the project is linked in `.infisical.json`, and variables from the process environment win over the file.
+
+```sh
+infisical run --env=dev -- npm run dev
+```
+
 macOS asks for Screen Recording permission on first start. It is needed to capture system audio.
 
 To try the interface without keys or audio:

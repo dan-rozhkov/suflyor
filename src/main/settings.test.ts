@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createSettingsStore, parseEnv, SettingsError } from './settings'
+import { createSettingsStore, devEnv, parseEnv, SettingsError } from './settings'
 import type { SecretCipher } from './settings'
 
 const fakeCipher = (available = true): SecretCipher => ({
@@ -12,6 +12,19 @@ const fakeCipher = (available = true): SecretCipher => ({
 })
 
 const tmpFile = (): string => join(mkdtempSync(join(tmpdir(), 'suflyor-')), 'settings.json')
+
+describe('devEnv', () => {
+  it('prefers the process environment over the file', () => {
+    expect(devEnv({ SONIOX_API_KEY: 'file', OPENCODE_API_KEY: 'file' }, { SONIOX_API_KEY: 'proc' })).toEqual({
+      SONIOX_API_KEY: 'proc',
+      OPENCODE_API_KEY: 'file'
+    })
+  })
+
+  it('ignores empty values and unrelated variables', () => {
+    expect(devEnv({ SONIOX_API_KEY: 'file' }, { SONIOX_API_KEY: '', PATH: '/bin' })).toEqual({ SONIOX_API_KEY: 'file' })
+  })
+})
 
 describe('parseEnv', () => {
   it('parses keys, quotes and comments', () => {
