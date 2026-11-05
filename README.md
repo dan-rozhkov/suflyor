@@ -15,15 +15,10 @@ Apple silicon Mac, macOS 14 or later, Xcode command line tools, Node.js.
 ```sh
 npm install
 node node_modules/electron/install.js   # only if the Electron binary was not downloaded
-cp .env.example .env                    # or paste the keys in Settings
-npm run dev
-```
-
-With Infisical, skip `.env`: the project is linked in `.infisical.json`, and variables from the process environment win over the file.
-
-```sh
 infisical run --env=dev -- npm run dev
 ```
+
+Keys come from Infisical, the project is linked in `.infisical.json`. Without Infisical, paste the keys in Settings or use `.env.example` as a template for `.env`.
 
 macOS asks for Screen Recording permission on first start. It is needed to capture system audio.
 
