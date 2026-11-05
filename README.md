@@ -55,6 +55,8 @@ The Worker name in `wrangler.jsonc` sets the public URL and the origin where the
 
 An installed Home Screen app may not see what Safari saved, so the code may have to be pasted once.
 
+iOS reads the status bar style when the app is added. If the clock is hard to read after an update, remove the app from the Home Screen and add it again.
+
 ## Reply suggestions
 
 While a call runs, the round sparkle button in the dark bar asks for replies. It needs at least one finished English line. The first reply shows, and `2 more` shows the rest. Tap a reply to copy it. The model hears the whole room and does not know who spoke, so it guesses from the words.

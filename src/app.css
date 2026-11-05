@@ -15,8 +15,13 @@ body {
   overflow: hidden;
   overscroll-behavior: none;
 }
-body {
+html {
+  background: var(--sheet);
+}
+html:has(.app.running) {
   background: var(--base);
+}
+body {
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--text-base);
@@ -47,20 +52,23 @@ button {
 }
 
 .app {
-  position: relative;
-  height: 100vh;
-  height: 100dvh;
-  /* The installed app draws white status bar text: keep that strip on the black base, not on the light sheet. */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  /* iOS resolves viewport height units unreliably in an installed app, so the root is pinned to the screen. */
+  position: fixed;
+  inset: 0;
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
   display: flex;
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  background: var(--sheet);
+}
+.app.running {
   background: var(--base);
 }
 .page {
   position: relative;
   z-index: 2;
+  padding-top: env(safe-area-inset-top);
   flex: 1;
   min-height: 0;
   display: flex;
@@ -93,7 +101,7 @@ button {
   position: absolute;
   z-index: 15;
   /* Below the corner buttons, so they stay reachable while a message is up. */
-  top: 60px;
+  top: calc(60px + env(safe-area-inset-top));
   left: var(--space-3);
   right: var(--space-3);
   display: flex;
@@ -372,7 +380,7 @@ button {
 .top-actions {
   position: absolute;
   z-index: 10;
-  top: var(--space-3);
+  top: calc(var(--space-3) + env(safe-area-inset-top));
   right: var(--space-4);
   display: flex;
   gap: var(--space-2);
@@ -411,7 +419,7 @@ button {
 .menu {
   position: absolute;
   z-index: 20;
-  top: 60px;
+  top: calc(60px + env(safe-area-inset-top));
   right: var(--space-4);
   min-width: 180px;
   padding: var(--space-2);
@@ -488,7 +496,7 @@ button {
 .panel-close {
   position: absolute;
   z-index: 10;
-  top: var(--space-3);
+  top: calc(var(--space-3) + env(safe-area-inset-top));
   right: var(--space-4);
 }
 .field-wrap {
