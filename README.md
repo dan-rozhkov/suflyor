@@ -62,7 +62,7 @@ While a call runs, the round sparkle button in the dark bar asks for replies. It
 
 ## Chapters
 
-Every paragraph in the feed starts with the time it appeared (24-hour clock, to the second). During a call the page also splits the talk into chapters with short Russian titles. Small dashes show at the right edge of the feed, one per chapter. Tap them on a phone, or hover on a computer, to open the list. Tap a chapter to scroll to it. `Latest` scrolls back to the end of the feed. Closed chapters do not change. Only the last chapter is sent again as the call goes on, so a long call costs the same for each request. If a request fails, the page stays quiet and tries again later.
+Every paragraph in the feed starts with the time it appeared (24-hour clock, to the second). During a call the page also splits the talk into chapters with short Russian titles. Small dashes show at the right edge of the feed, one per chapter. Tap them on a phone, or hover on a computer, to open the list. Tap a chapter to scroll to it. `Latest` scrolls back to the end of the feed. A chapter shorter than about 20 seconds of speech is joined to the one before it, except the first chapter of a call. Closed chapters do not change. Only the last chapter is sent again as the call goes on, so a long call costs the same for each request. If a request fails, the page stays quiet and tries again later.
 
 ## Call context
 

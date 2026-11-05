@@ -5,7 +5,7 @@ const SYSTEM = `You split the transcript of a live call into chapters.
 The input is numbered paragraphs of a Russian translation of a live call. The translation is machine-made and may contain errors. The paragraphs have no speaker labels.
 
 Split the paragraphs into chapters by topic.
-- Start a new chapter only when the topic clearly changes, not for a small digression. A chapter normally covers at least several paragraphs.
+- Start a new chapter only when the topic clearly changes, not for a small digression. A chapter normally covers at least several paragraphs and never less than 300 characters of text.
 - Paragraph 0 always starts the first chapter.
 - If the user message has <open_chapter_title> tags, the text continues that chapter. Keep that title exactly when the topic of the first chapter is unchanged. Change it only if it no longer fits.
 - Titles are in Russian, 2 to 5 words, a noun phrase that names the concrete topic. No ending punctuation, no quotes. Do not use generic words such as "Обсуждение" or "Разговор".

@@ -3,6 +3,7 @@ import {
   createChapterer,
   FLUSH_CHARS,
   MAX_RETRIES,
+  MIN_CHAPTER_CHARS,
   MIN_GAP_MS,
   PAUSE_CHARS,
   PAUSE_MS,
@@ -26,7 +27,7 @@ const hanging = (): typeof fetch =>
 function para(i: number, len = 50, id = 'u1'): ChapterPara {
   return { key: { id, para: i }, text: `p${i} `.padEnd(len, 'x'), at: 1000 + i }
 }
-const paras = (n: number, len = 50, id = 'u1'): ChapterPara[] => Array.from({ length: n }, (_, i) => para(i, len, id))
+const paras = (n: number, len = 320, id = 'u1'): ChapterPara[] => Array.from({ length: n }, (_, i) => para(i, len, id))
 
 function setup(fetchImpl: typeof fetch, code = 'fictional-code-0123456789abcdef') {
   const state = { paras: paras(4), code }
@@ -408,7 +409,7 @@ describe('window', () => {
     const { c, state, changes } = setup(f as unknown as typeof fetch)
     c.onText(SIZE_CHARS)
     await vi.advanceTimersByTimeAsync(0)
-    state.paras = paras(MAX_CHAPTER_PARAGRAPHS + 30, 10)
+    state.paras = paras(MAX_CHAPTER_PARAGRAPHS + 30, 70)
     await vi.advanceTimersByTimeAsync(MIN_GAP_MS)
     c.onText(SIZE_CHARS * 2)
     await vi.advanceTimersByTimeAsync(0)
@@ -486,6 +487,141 @@ describe('merge', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(f).toHaveBeenCalledTimes(2)
     expect(changes).toHaveLength(1)
+  })
+})
+
+describe('short chapters', () => {
+  const lens = (list: number[]): ChapterPara[] => list.map((len, i) => para(i, len))
+  const starts = (n: number): { start: number; title: string }[] => Array.from({ length: n }, (_, i) => ({ start: i, title: `Тема ${i}` }))
+
+  it('joins paragraphs of 180, 210 and 90 characters into one chapter', async () => {
+    const f = vi.fn(async () => ok(starts(3)))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([180, 210, 90])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes).toEqual([[{ key: { id: 'u1', para: 0 }, title: 'Тема 0', at: 1000 }]])
+  })
+
+  it('keeps two real topics as two chapters', async () => {
+    const f = vi.fn(async () => ok([{ start: 0, title: 'Первая' }, { start: 1, title: 'Вторая' }]))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([MIN_CHAPTER_CHARS, MIN_CHAPTER_CHARS])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[0].map((x) => [x.key.para, x.title])).toEqual([[0, 'Первая'], [1, 'Вторая']])
+  })
+
+  it('joins a short chapter to the one before it and keeps later chapters', async () => {
+    const f = vi.fn(async () => ok(starts(4)))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([400, 100, 400, 400])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[0].map((x) => [x.key.para, x.title])).toEqual([[0, 'Тема 0'], [2, 'Тема 2'], [3, 'Тема 3']])
+  })
+
+  it('drops a short last chapter, and the next window still holds its text', async () => {
+    const f = vi.fn()
+    f.mockImplementationOnce(async () => ok([{ start: 0, title: 'Первая' }, { start: 2, title: 'Хвост' }]))
+    f.mockImplementation(async () => ok([{ start: 0, title: 'Первая' }]))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([400, 400, 100, 100])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[0].map((x) => x.title)).toEqual(['Первая'])
+    await vi.advanceTimersByTimeAsync(MIN_GAP_MS)
+    c.onText(SIZE_CHARS * 2)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(bodyOf(f, 1).openTitle).toBe('Первая')
+    expect(bodyOf(f, 1).paragraphs).toEqual(state.paras.map((p) => p.text))
+  })
+
+  it('a short open part takes the name of the real topic after it, and the key stays', async () => {
+    const f = vi.fn()
+    f.mockImplementationOnce(async () => ok([{ start: 0, title: 'Первая' }]))
+    f.mockImplementation(async () => ok([{ start: 1, title: 'Вторая' }]))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([100, 400, 400])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(MIN_GAP_MS)
+    c.onText(SIZE_CHARS * 2)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[changes.length - 1].map((x) => [x.key.para, x.title])).toEqual([[0, 'Вторая']])
+  })
+
+  it('a short opening does not take the title of a real topic for good', async () => {
+    const f = vi.fn(async () => ok(starts(2)))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([60, 1500])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[0].map((x) => [x.key.para, x.title])).toEqual([[0, 'Тема 1']])
+  })
+
+  it('keeps a split at the start of a cut window, because the open chapter is long', async () => {
+    const f = vi.fn()
+    f.mockImplementationOnce(async () => ok([{ start: 0, title: 'Первая' }]))
+    f.mockImplementation(async () => ok([{ start: 0, title: 'Первая' }, { start: 1, title: 'Новая' }]))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(MIN_GAP_MS)
+    state.paras = paras(100, 200)
+    c.onText(SIZE_CHARS * 2)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(bodyOf(f as unknown as ReturnType<typeof vi.fn>, 1).paragraphs.length).toBeLessThan(100)
+    expect(changes[changes.length - 1].map((x) => x.title)).toEqual(['Первая', 'Новая'])
+  })
+
+  it('short neighbours grow into one chapter instead of vanishing', async () => {
+    const f = vi.fn(async () => ok(starts(6)))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([400, 220, 220, 220, 220, 400])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[0].map((x) => x.key.para)).toEqual([0, 1, 3, 5])
+  })
+
+  it('at Stop a short tail joins the chapter before it', async () => {
+    const f = vi.fn(async () => ok([{ start: 0, title: 'Первая' }, { start: 2, title: 'Хвост' }]))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([400, 400, 250])
+    c.onText(FLUSH_CHARS)
+    c.flush()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[0].map((x) => x.title)).toEqual(['Первая'])
+  })
+
+  it('a short first chapter of a new call stays on its own', async () => {
+    const f = vi.fn()
+    f.mockImplementationOnce(async () => ok([{ start: 0, title: 'Прошлый звонок' }]))
+    f.mockImplementation(async () => ok([{ start: 0, title: 'Новый звонок' }]))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    c.startRun()
+    state.paras = paras(1, 120, 'u9')
+    c.onText(FLUSH_CHARS)
+    c.flush()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[changes.length - 1].map((x) => x.title)).toEqual(['Прошлый звонок', 'Новый звонок'])
+  })
+
+  it('never touches frozen chapters, even short ones', async () => {
+    const f = vi.fn()
+    f.mockImplementationOnce(async () => ok([{ start: 0, title: 'Первая' }, { start: 1, title: 'Вторая' }]))
+    f.mockImplementation(async () => ok([{ start: 0, title: 'Вторая, уточнено' }]))
+    const { c, state, changes } = setup(f as unknown as typeof fetch)
+    state.paras = lens([400, 400])
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[0]).toHaveLength(2)
+    // Text of a closed paragraph can shrink later: the frozen chapter is now short.
+    state.paras = [para(0, 50), para(1, 400), para(2, 400)]
+    await vi.advanceTimersByTimeAsync(MIN_GAP_MS)
+    c.onText(SIZE_CHARS * 2)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(changes[1].map((x) => [x.key.para, x.title])).toEqual([[0, 'Первая'], [1, 'Вторая, уточнено']])
   })
 })
 

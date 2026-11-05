@@ -11,6 +11,8 @@ export const PAUSE_CHARS = 400
 export const MIN_GAP_MS = 45_000
 /** Stop sends the rest when at least this many characters are new, ignoring the gap. */
 export const FLUSH_CHARS = 100
+/** The shortest chapter, about 20 seconds of speech: longer than one usual paragraph, shorter than a real topic. */
+export const MIN_CHAPTER_CHARS = 300
 export const REQUEST_MS = 20_000
 export const BACKOFF_BASE_MS = 60_000
 export const BACKOFF_MAX_MS = 5 * 60_000
@@ -237,20 +239,45 @@ export function createChapterer(deps: ChapterDeps): Chapterer {
   }
 
   function merge(base: number, open: Chapter | undefined, head: ChapterPara, window: ChapterPara[], answer: Answer[], fromRun: number): void {
-    const mapped: Chapter[] = []
+    // Each mapped chapter keeps its window index while the short ones are dropped.
+    const entries: { idx: number; chapter: Chapter }[] = []
     let prev = -1
     for (const a of answer) {
       const title = a.title.trim().slice(0, MAX_CHAPTER_TITLE_CHARS)
       if (!Number.isInteger(a.start) || a.start < 0 || a.start >= window.length || a.start <= prev || !title) continue
       prev = a.start
-      if (!mapped.length) {
+      const own = { idx: a.start, chapter: { key: window[a.start].key, title, at: window[a.start].at } }
+      if (!entries.length) {
         // A cut window cannot move the first chapter. An answer that skips paragraph 0 leaves the open chapter as it is.
         const first = open ?? head
-        if (open && a.start > 0) mapped.push(open, { key: window[a.start].key, title, at: window[a.start].at })
-        else mapped.push({ key: first.key, title, at: first.at })
-      } else mapped.push({ key: window[a.start].key, title, at: window[a.start].at })
+        if (open && a.start > 0) entries.push({ idx: 0, chapter: open }, own)
+        else entries.push({ idx: 0, chapter: { key: first.key, title, at: first.at } })
+      } else entries.push(own)
     }
-    if (!mapped.length) return
+    if (!entries.length) return
+    const sizeOf = (from: number, to: number): number => window.slice(from, to).reduce((n, p) => n + p.text.length, 0)
+    // A cut window hides the start of the first chapter, so its size here says nothing.
+    const cut = window[0] !== head
+    const kept = [entries[0]]
+    entries.slice(1).forEach((e, i) => {
+      const last = kept[kept.length - 1]
+      if ((cut && kept.length === 1) || sizeOf(last.idx, e.idx) >= MIN_CHAPTER_CHARS) {
+        kept.push(e)
+        return
+      }
+      // Short neighbours grow together into one chapter.
+      if (sizeOf(e.idx, entries[i + 2]?.idx ?? window.length) < MIN_CHAPTER_CHARS) return
+      // A short chapter before a real one joins the chapter before it.
+      if (kept.length > 1) {
+        kept[kept.length - 1] = e
+        return
+      }
+      // The first chapter has none before it: it stays where it is and names the real topic.
+      kept[0] = { idx: last.idx, chapter: { ...last.chapter, title: e.chapter.title } }
+    })
+    // A short tail joins the chapter before it. While the call goes on, the next request can split it again.
+    if (kept.length > 1 && sizeOf(kept[kept.length - 1].idx, window.length) < MIN_CHAPTER_CHARS) kept.pop()
+    const mapped = kept.map((e) => e.chapter)
     openRun = fromRun
     const next = chapters.slice(0, base).concat(mapped)
     if (sameList(next, chapters)) return
