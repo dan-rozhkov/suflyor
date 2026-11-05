@@ -19,9 +19,9 @@ html {
   --pad-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
   background: var(--sheet);
 }
-/* Set by app.ts: iOS already left an empty strip below the app, so the buttons need no space of their own. */
+/* Set by app.ts: the root reaches past the area iOS gave it, down to the screen edge. Same gap as at the sides. */
 html.root-short {
-  --pad-bottom: 0px;
+  --pad-bottom: var(--space-4);
 }
 html:has(.app.running) {
   background: var(--base);
@@ -59,7 +59,7 @@ button {
 .app {
   /* iOS resolves viewport height units unreliably in an installed app, so the root is pinned to the screen. */
   position: fixed;
-  inset: 0;
+  inset: 0 0 calc(-1 * var(--root-extra, 0px));
   padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
   display: flex;
   flex-direction: column;

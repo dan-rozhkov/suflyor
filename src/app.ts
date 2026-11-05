@@ -10,7 +10,7 @@ import { BAD_CODE_MESSAGE, fetchToken } from './token'
 import { loadContext, saveContext } from './context'
 import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
-import { rootIsShort } from './viewport'
+import { rootShortfall } from './viewport'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -139,10 +139,15 @@ document.querySelector('.brand')!.prepend(logoIcon())
 /* installed app height */
 
 function fitInstalledApp(): void {
+  const root = document.documentElement
+  root.classList.remove('root-short')
+  root.style.removeProperty('--root-extra')
   const installed = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
-  const portrait = matchMedia('(orientation: portrait)').matches
-  const short = installed && portrait && rootIsShort(screen.height, appEl.getBoundingClientRect().height)
-  document.documentElement.classList.toggle('root-short', short)
+  if (!installed || !matchMedia('(orientation: portrait)').matches) return
+  const extra = rootShortfall(screen.height, appEl.getBoundingClientRect().height)
+  if (!extra) return
+  root.style.setProperty('--root-extra', `${extra}px`)
+  root.classList.add('root-short')
 }
 fitInstalledApp()
 window.addEventListener('orientationchange', () => window.setTimeout(fitInstalledApp, 300))

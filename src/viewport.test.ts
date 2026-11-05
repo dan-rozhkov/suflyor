@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { rootIsShort } from './viewport'
+import { rootShortfall } from './viewport'
 
-describe('rootIsShort', () => {
-  it('is true when iOS removed the status bar twice', () => {
-    expect(rootIsShort(852, 748)).toBe(true)
-    expect(rootIsShort(956, 832)).toBe(true)
+describe('rootShortfall', () => {
+  it('is one status bar when iOS removed the bar twice', () => {
+    expect(rootShortfall(852, 748)).toBe(52)
+    expect(rootShortfall(956, 832)).toBe(62)
   })
 
-  it('is false when only the status bar is missing', () => {
-    expect(rootIsShort(852, 798)).toBe(false)
-    expect(rootIsShort(956, 894)).toBe(false)
-    expect(rootIsShort(667, 647)).toBe(false)
+  it('is 0 when only the status bar is missing', () => {
+    expect(rootShortfall(852, 798)).toBe(0)
+    expect(rootShortfall(956, 894)).toBe(0)
+    expect(rootShortfall(667, 647)).toBe(0)
   })
 
-  it('is false when the root fills the screen', () => {
-    expect(rootIsShort(852, 852)).toBe(false)
+  it('is 0 when the root fills the screen', () => {
+    expect(rootShortfall(852, 852)).toBe(0)
   })
 })

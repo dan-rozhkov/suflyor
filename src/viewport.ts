@@ -2,9 +2,11 @@
 const STATUS_BAR_MAX = 70
 
 /**
- * An installed iOS app without a translucent status bar can get a layout area that ends well above the screen edge.
- * iOS leaves that strip empty, so it already gives the space that the page would otherwise add under its buttons.
+ * An installed iOS app without a translucent status bar can get a layout area that ends above the screen edge:
+ * the status bar height is taken off once for the top of the app and once more at the bottom.
+ * Returns how far the root has to reach past that area, or 0 when it already ends at the edge.
  */
-export function rootIsShort(screenHeight: number, rootHeight: number): boolean {
-  return screenHeight - rootHeight > STATUS_BAR_MAX
+export function rootShortfall(screenHeight: number, rootHeight: number): number {
+  const missing = screenHeight - rootHeight
+  return missing > STATUS_BAR_MAX ? missing / 2 : 0
 }
