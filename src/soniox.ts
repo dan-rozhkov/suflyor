@@ -21,6 +21,8 @@ export interface SonioxClientOptions {
   onError: (message: string) => void
   /** Names, terms and notes for the call. Sent in the start message when set. */
   context?: SonioxContext
+  /** The spoken language, and the one to translate into (null: no translation). */
+  languages: { source: string; target: string | null }
   WebSocketImpl?: new (url: string) => SocketLike
 }
 
@@ -45,7 +47,7 @@ function friendly(code: number | undefined, text: string): string | null {
 export function createSonioxClient(opts: SonioxClientOptions): SonioxClient {
   const { key, onUtterances, onStatus, onError } = opts
   const Impl = opts.WebSocketImpl ?? (WebSocket as unknown as new (url: string) => SocketLike)
-  const assembler = new TokenAssembler(`x${Date.now().toString(36)}-`)
+  const assembler = new TokenAssembler(`x${Date.now().toString(36)}-`, opts.languages)
   const ws = new Impl(ENDPOINT)
   let stopping = false
   let closed = false
@@ -87,9 +89,9 @@ export function createSonioxClient(opts: SonioxClientOptions): SonioxClient {
         audio_format: 'pcm_s16le',
         sample_rate: 16000,
         num_channels: 1,
-        language_hints: ['en'],
+        language_hints: [opts.languages.source],
         enable_endpoint_detection: true,
-        translation: { type: 'one_way', target_language: 'ru' },
+        ...(opts.languages.target ? { translation: { type: 'one_way', target_language: opts.languages.target } } : {}),
         ...(opts.context ? { context: opts.context } : {})
       })
     )

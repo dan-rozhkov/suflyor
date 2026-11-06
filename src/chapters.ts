@@ -36,6 +36,8 @@ export interface Chapter {
 
 export interface ChapterDeps {
   getCode: () => string
+  /** Read at send time. */
+  getLanguage: () => string
   /** Paragraphs of the current run, in order. */
   getParagraphs: () => ChapterPara[]
   onChange: (chapters: Chapter[]) => void
@@ -197,6 +199,7 @@ export function createChapterer(deps: ChapterDeps): Chapterer {
           headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             paragraphs: window.map((p) => p.text.slice(0, MAX_CHAPTER_PARAGRAPH_CHARS)),
+            language: deps.getLanguage(),
             ...(openChapter ? { openTitle: openChapter.title } : {})
           }),
           signal: ctrl.signal

@@ -1,6 +1,6 @@
 /**
  * Incremental parser for the line-based suggestion format:
- *   EN: <english reply>      (2-3 lines)
+ *   REPLY: <reply>           (2-3 lines; EN: is the older tag for the same thing)
  *   RU: <russian meaning>    (may continue on following lines)
  * Chunks may split anywhere. The partial last line is reflected in the state while it streams.
  */
@@ -12,7 +12,7 @@ export interface ParsedSuggestion {
 type Section = 'none' | 'en' | 'ru'
 
 const MAX_OPTIONS = 3
-const LINE_RE = /^\s*(?:[-*]\s*)?(EN|RU)\s*[:：]\s?(.*)$/i
+const LINE_RE = /^\s*(?:[-*]\s*)?(REPLY|EN|RU)\s*[:：]\s?(.*)$/i
 
 export class SuggestionParser {
   private buffer = ''
@@ -45,7 +45,7 @@ export class SuggestionParser {
     const m = LINE_RE.exec(line)
     if (m) {
       const text = m[2].trim()
-      if (m[1].toUpperCase() === 'EN') {
+      if (m[1].toUpperCase() !== 'RU') {
         this.section = 'en'
         if (this.options.length < MAX_OPTIONS && text) this.options.push(clean(text))
       } else {
@@ -63,7 +63,7 @@ export class SuggestionParser {
     const m = LINE_RE.exec(pending)
     if (m) {
       const text = m[2].trim()
-      if (m[1].toUpperCase() === 'EN') {
+      if (m[1].toUpperCase() !== 'RU') {
         if (options.length < MAX_OPTIONS && text) options.push(clean(text))
       } else if (text) ru.push(text)
     } else if (this.section === 'ru' && pending.trim()) {

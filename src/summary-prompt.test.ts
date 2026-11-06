@@ -27,7 +27,34 @@ describe('buildSummaryMessages', () => {
   })
 })
 
+describe('buildSummaryMessages languages', () => {
+  it('keeps the Russian wording by default', () => {
+    const [sys] = buildSummaryMessages(['a'], '')
+    expect(sys.content).toContain('It is mostly English')
+    expect(sys.content).toContain('Write ALL output in Russian. Keep product names and proper names as they were said, and never add Russian endings to a name in Latin letters.')
+    expect(sys.content).not.toContain('double asterisks')
+    expect(sys.content).toContain('2 to 5 word Russian noun phrases. Do not use generic words such as "Обсуждение".')
+    expect(buildSummaryMessages(['a'], '', { callLanguage: 'en', language: 'ru' })[0]).toEqual(sys)
+  })
+
+  it('names the languages and uses English examples for others', () => {
+    const [sys] = buildSummaryMessages(['a'], '', { callLanguage: 'de', language: 'fr' })
+    expect(sys.content).toContain('It is mostly German')
+    expect(sys.content).toContain('Write ALL output in French. Keep product names and proper names as they were said.')
+    expect(sys.content).not.toContain('Russian endings')
+    expect(sys.content).not.toContain('double asterisks')
+    expect(sys.content).toContain('2 to 5 word French noun phrases. Do not use generic words such as "Discussion", or its equivalent.')
+    expect(sys.content).not.toMatch(/Russian|Обсуждение|ноября/)
+    expect(sys.content).toContain('TITLE: <title>')
+  })
+})
+
 describe('parseSummary', () => {
+  it('falls back to an English title for other languages', () => {
+    expect(parseSummary('OVERVIEW:\n- Short.', 'de')!.title).toBe('Call summary')
+    expect(parseSummary('OVERVIEW:\n- Short.', 'ru')!.title).toBe('Итоги разговора')
+  })
+
   it('parses the full format', () => {
     const text = [
       'TITLE: Запуск пилота',

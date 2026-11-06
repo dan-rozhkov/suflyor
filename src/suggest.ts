@@ -19,6 +19,8 @@ export interface SuggestUpdate {
 export interface SuggesterDeps {
   getCode: () => string
   getContext: () => string
+  /** Read at send time. No userLanguage means translation is off. */
+  getLanguages: () => { callLanguage: string; userLanguage?: string }
   onUpdate: (u: SuggestUpdate) => void
   fetchImpl?: typeof fetch
 }
@@ -73,7 +75,7 @@ export function createSuggester(deps: SuggesterDeps): Suggester {
       const res = await doFetch('/api/suggest', {
         method: 'POST',
         headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lines: lines.slice(-MAX_LINES), context: deps.getContext().slice(0, MAX_CONTEXT_CHARS) }),
+        body: JSON.stringify({ lines: lines.slice(-MAX_LINES), context: deps.getContext().slice(0, MAX_CONTEXT_CHARS), ...deps.getLanguages() }),
         signal: mine.ctrl.signal
       })
       if (!alive()) return

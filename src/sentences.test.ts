@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countSentences, englishForHero, paragraphParts, paragraphs, splitLast } from './sentences'
+import { countSentences, originalForHero, paragraphParts, paragraphs, paragraphText, splitLast } from './sentences'
 
 describe('splitLast', () => {
   it('returns the whole text when there is no boundary', () => {
@@ -126,21 +126,58 @@ describe('countSentences', () => {
   })
 })
 
-describe('englishForHero', () => {
+describe('scripts without capitals or spaces', () => {
+  it('splits Japanese on 。！？ with no space after them', () => {
+    const text = '今日は新しい料金プランについて話します。お客様はまだ慎重に様子を見ています！皆さんはこの決定についてどう思いますか、率直な意見を聞かせてください？'
+    expect(countSentences(text)).toBe(3)
+    expect(splitLast(text)).toEqual({
+      head: '今日は新しい料金プランについて話します。お客様はまだ慎重に様子を見ています！',
+      last: '皆さんはこの決定についてどう思いますか、率直な意見を聞かせてください？'
+    })
+  })
+
+  it('splits Chinese and keeps closing quotes with the sentence', () => {
+    const text = '我们刚刚发布了新的价格方案。他说「我们明天开始」。你们觉得这个决定怎么样呢，请在月底之前告诉我们你们真实的想法和建议？'
+    expect(countSentences(text)).toBe(3)
+    expect(splitLast(text).last).toBe('你们觉得这个决定怎么样呢，请在月底之前告诉我们你们真实的想法和建议？')
+  })
+
+  it('splits Arabic on the question mark and the full stop', () => {
+    const text = 'أطلقنا خطة أسعار جديدة للفرق الصغيرة. العملاء حذرون حتى الآن. ما رأيكم في هذا القرار؟ نريد سماع رأيكم قبل نهاية الشهر.'
+    expect(countSentences(text)).toBe(4)
+    expect(splitLast(text).last).toBe('نريد سماع رأيكم قبل نهاية الشهر.')
+  })
+
+  it('splits Hindi on the danda and Urdu on its full stop', () => {
+    expect(countSentences('हमने छोटी टीमों के लिए नई योजना शुरू की है। ग्राहक अभी सावधान हैं। आप क्या सोचते हैं')).toBe(3)
+    expect(countSentences('ہم نے چھوٹی ٹیموں کے لیے نیا منصوبہ شروع کیا۔ گاہک ابھی محتاط ہیں۔ آپ کیا سوچتے ہیں')).toBe(3)
+  })
+
+  it('does not treat a lone ideographic stop at the end as a new sentence', () => {
+    expect(countSentences('これは一つだけの文です。')).toBe(1)
+  })
+
+  it('builds paragraphs from Japanese text', () => {
+    const text = '今日は新しい料金プランについて話します。'.repeat(10)
+    expect(paragraphs(text).length).toBeGreaterThan(1)
+  })
+})
+
+describe('originalForHero', () => {
   const en = 'One is here today. Two is next. Three follows now. Four comes last in this long list'
-  it('drops as many English sentences as the Russian head holds', () => {
-    expect(englishForHero('Первое предложение здесь. Второе предложение тут. Третье предложение уже идет', en)).toBe('Three follows now. Four comes last in this long list')
+  it('drops as many original sentences as the translation head holds', () => {
+    expect(originalForHero('Первое предложение здесь. Второе предложение тут. Третье предложение уже идет', en)).toBe('Three follows now. Four comes last in this long list')
   })
-  it('shows everything when the Russian has a single sentence', () => {
-    expect(englishForHero('Только одно предложение пока', en)).toBe(en)
+  it('shows everything when the translation has a single sentence', () => {
+    expect(originalForHero('Только одно предложение пока', en)).toBe(en)
   })
-  it('falls back to the last English sentence when English is shorter', () => {
-    expect(englishForHero('Первое предложение здесь. Второе предложение тут. Третье предложение уже идет', 'Just one English sentence so far')).toBe('Just one English sentence so far')
-    expect(englishForHero('Первое предложение здесь. Второе предложение тут. Третье предложение уже идет', 'One is here today. Two is the next one to come')).toBe('Two is the next one to come')
+  it('falls back to the last original sentence when the original is shorter', () => {
+    expect(originalForHero('Первое предложение здесь. Второе предложение тут. Третье предложение уже идет', 'Just one English sentence so far')).toBe('Just one English sentence so far')
+    expect(originalForHero('Первое предложение здесь. Второе предложение тут. Третье предложение уже идет', 'One is here today. Two is the next one to come')).toBe('Two is the next one to come')
   })
-  it('shows the last English sentence while Russian is empty', () => {
-    expect(englishForHero('', en)).toBe('Four comes last in this long list')
-    expect(englishForHero('', '')).toBe('')
+  it('shows the last original sentence while the translation is empty', () => {
+    expect(originalForHero('', en)).toBe('Four comes last in this long list')
+    expect(originalForHero('', '')).toBe('')
   })
 })
 
@@ -234,5 +271,17 @@ describe('paragraphParts', () => {
       expect(join(paragraphParts(text))).toEqual(paragraphs(text))
     }
     expect(join(paragraphParts('Да. Нет. Может быть, посмотрим позже. Хорошо.'))).toEqual(paragraphs('Да. Нет. Может быть, посмотрим позже. Хорошо.'))
+  })
+})
+
+describe('other scripts', () => {
+  it('adds no space between Chinese sentences', () => {
+    const text = '我们今天讨论下周的发布计划和大家的具体分工安排。测试工作还需要再多两天的时间才能全部完成吗？好的那么发布就推迟到星期二再进行。'
+    expect(paragraphs(text).join('')).toBe(text)
+    expect(paragraphParts(text).map(paragraphText).join('')).toBe(text)
+  })
+
+  it('splits before the Spanish opening marks', () => {
+    expect(countSentences('Hola, buenos días a todos. ¿Cómo estás hoy? ¡Muy bien, gracias! Seguimos.')).toBe(4)
   })
 })

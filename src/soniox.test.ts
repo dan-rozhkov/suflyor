@@ -38,6 +38,7 @@ function setup() {
     onUtterances: (u) => events.utt.push(u),
     onStatus: (s) => events.status.push(s),
     onError: (m) => events.err.push(m),
+    languages: { source: 'en', target: 'ru' },
     WebSocketImpl: FakeSocket
   })
   return { client, ws: FakeSocket.last, events }
@@ -51,12 +52,26 @@ afterEach(() => vi.useRealTimers())
 describe('soniox client', () => {
   it('adds context to the start message only when given', () => {
     const mk = (context?: { text: string }): Record<string, unknown> => {
-      createSonioxClient({ key: KEY, onUtterances: () => {}, onStatus: () => {}, onError: () => {}, context, WebSocketImpl: FakeSocket })
+      createSonioxClient({ key: KEY, onUtterances: () => {}, onStatus: () => {}, onError: () => {}, context, languages: { source: 'en', target: 'ru' }, WebSocketImpl: FakeSocket })
       FakeSocket.last.open()
       return JSON.parse(FakeSocket.last.sent[0] as string)
     }
     expect(mk({ text: 'We sell Nimbus.' }).context).toEqual({ text: 'We sell Nimbus.' })
     expect('context' in mk()).toBe(false)
+  })
+
+  it('uses the given languages, and omits translation when the target is null', () => {
+    const mk = (languages: { source: string; target: string | null }): Record<string, unknown> => {
+      createSonioxClient({ key: KEY, onUtterances: () => {}, onStatus: () => {}, onError: () => {}, languages, WebSocketImpl: FakeSocket })
+      FakeSocket.last.open()
+      return JSON.parse(FakeSocket.last.sent[0] as string)
+    }
+    const a = mk({ source: 'de', target: 'ja' })
+    expect(a.language_hints).toEqual(['de'])
+    expect(a.translation).toEqual({ type: 'one_way', target_language: 'ja' })
+    const b = mk({ source: 'ar', target: null })
+    expect(b.language_hints).toEqual(['ar'])
+    expect('translation' in b).toBe(false)
   })
 
   it('drops audio before open, sends config first after open', () => {
@@ -67,6 +82,7 @@ describe('soniox client', () => {
     ws.open()
     const cfg = JSON.parse(ws.sent[0] as string)
     expect(cfg.api_key).toBe(KEY)
+    expect(cfg.language_hints).toEqual(['en'])
     expect(cfg.translation).toEqual({ type: 'one_way', target_language: 'ru' })
     expect(cfg.sample_rate).toBe(16000)
     expect(client.send(audio())).toBe(true)
@@ -84,7 +100,7 @@ describe('soniox client', () => {
       ]
     })
     expect(events.utt).toHaveLength(1)
-    expect(events.utt[0][0]).toMatchObject({ en: 'Hello', ru: 'Привет', isFinal: false })
+    expect(events.utt[0][0]).toMatchObject({ original: 'Hello', translation: 'Привет', originalLang: 'en', translationLang: 'ru', isFinal: false })
   })
 
   it('stops gracefully on finished', () => {
@@ -99,7 +115,7 @@ describe('soniox client', () => {
     expect(ws.closed).toBe(true)
     expect(events.status[events.status.length - 1]).toBe('closed')
     // flush delivered the open segment as final
-    expect(events.utt[events.utt.length - 1][0]).toMatchObject({ en: 'Hi', isFinal: true })
+    expect(events.utt[events.utt.length - 1][0]).toMatchObject({ original: 'Hi', isFinal: true })
   })
 
   it('stops after 3 s without finished', () => {

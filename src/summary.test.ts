@@ -3,6 +3,7 @@ import { MAX_SUMMARY_CHARS, MAX_SUMMARY_LINES } from './summary-limits'
 import { MAX_CONTEXT_CHARS } from './suggest-prompt'
 import {
   requestSummary,
+  summaryLabels,
   summaryLines,
   summaryMeta,
   SUMMARY_FAILED_MESSAGE,
@@ -64,7 +65,7 @@ const good = {
 }
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status })
 const CODE = 'fictional-code-0123456789abcdef'
-const base = { code: CODE, lines: ['Hello.'], context: 'notes' }
+const base = { code: CODE, lines: ['Hello.'], context: 'notes', callLanguage: 'en', language: 'ru' }
 
 describe('requestSummary', () => {
   it('returns the summary on 200 and sends the contract', async () => {
@@ -81,6 +82,8 @@ describe('requestSummary', () => {
     const body = JSON.parse(init.body as string)
     expect(body.lines).toEqual(['Hello.'])
     expect(body.context).toHaveLength(MAX_CONTEXT_CHARS)
+    expect(body.callLanguage).toBe('en')
+    expect(body.language).toBe('ru')
   })
 
   it('refuses a code a header cannot carry without calling fetch', async () => {
@@ -155,13 +158,33 @@ describe('requestSummary', () => {
 describe('summaryMeta', () => {
   const at = new Date(2026, 10, 6, 12, 0).getTime()
   it('gives the date and minutes', () => {
-    const m = summaryMeta(at, 12 * 60_000)
+    const m = summaryMeta(at, 12 * 60_000, 'ru')
     expect(m).toMatch(/^6 ноября 2026 · 12 мин$/)
   })
   it('says less than a minute under 60 seconds', () => {
-    expect(summaryMeta(at, 59_000)).toBe('6 ноября 2026 · меньше минуты')
+    expect(summaryMeta(at, 59_000, 'ru')).toBe('6 ноября 2026 · меньше минуты')
   })
   it('rounds up to one minute at the boundary', () => {
-    expect(summaryMeta(at, 60_000)).toBe('6 ноября 2026 · 1 мин')
+    expect(summaryMeta(at, 60_000, 'ru')).toBe('6 ноября 2026 · 1 мин')
+  })
+})
+
+describe('summaryMeta in other languages', () => {
+  const at = new Date(2026, 10, 6, 12, 0).getTime()
+  it('uses English for every language but Russian', () => {
+    expect(summaryMeta(at, 12 * 60_000, 'de')).toBe('November 6, 2026 · 12 min')
+    expect(summaryMeta(at, 59_000, 'fr')).toBe('November 6, 2026 · less than a minute')
+    expect(summaryMeta(at, 60_000, 'en')).toBe('November 6, 2026 · 1 min')
+  })
+})
+
+describe('summaryLabels', () => {
+  it('gives Russian headings for ru', () => {
+    expect(summaryLabels('ru')).toEqual({ actions: 'Задачи', overview: 'Обзор', cut: 'Итоги только по последней части разговора.', ready: 'Итоги готовы' })
+  })
+  it('gives English headings for everything else', () => {
+    const en = { actions: 'Action items', overview: 'Overview', cut: 'This summary covers only the last part of the call.', ready: 'Summary ready' }
+    expect(summaryLabels('de')).toEqual(en)
+    expect(summaryLabels('en')).toEqual(en)
   })
 })

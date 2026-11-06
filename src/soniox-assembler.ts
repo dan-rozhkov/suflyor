@@ -23,27 +23,27 @@ const FIN = '<fin>'
 
 interface Open {
   id: string
-  finalEn: string
-  finalRu: string
-  partialEn: string
-  partialRu: string
+  finalOriginal: string
+  finalTranslation: string
+  partialOriginal: string
+  partialTranslation: string
 }
 
 /** A segment closed by <end> whose translation may still be arriving. */
 interface Closed {
   id: string
-  en: string
-  ru: string
-  partialRu: string
+  original: string
+  translation: string
+  partialTranslation: string
 }
 
 const MAX_AWAITING = 3
 const MAX_EMITTED = 200
 
 /**
- * Translation lags the source: Soniox streams the Russian tokens of segment N after its <end>, possibly after
- * the English of segment N+1 has started. Closed segments are kept in an ordered queue; Russian tokens go to the
- * oldest one that is still waiting (no Russian yet), or to the head while the open segment has no English.
+ * Translation lags the source: Soniox streams the translation tokens of segment N after its <end>, possibly after
+ * the original of segment N+1 has started. Closed segments are kept in an ordered queue; translation tokens go to the
+ * oldest one that is still waiting (no translation yet), or to the head while the open segment has no original.
  * Otherwise they belong to the open segment and the head is retired.
  */
 export class TokenAssembler {
@@ -51,26 +51,33 @@ export class TokenAssembler {
   private cur: Open
   private awaiting: Closed[] = []
   private lastEmitted = new Map<string, string>()
-  /** Closed segments that got Russian tokens in the response being processed. */
+  /** Closed segments that got translation tokens in the response being processed. */
   private touched = new Set<Closed>()
 
-  constructor(private readonly idPrefix = 'u') {
+  constructor(
+    private readonly idPrefix = 'u',
+    private readonly languages: { source: string; target: string | null } = { source: 'en', target: 'ru' }
+  ) {
     this.cur = this.fresh()
   }
 
   private fresh(): Open {
     this.seq += 1
-    return { id: `${this.idPrefix}${this.seq}`, finalEn: '', finalRu: '', partialEn: '', partialRu: '' }
+    return { id: `${this.idPrefix}${this.seq}`, finalOriginal: '', finalTranslation: '', partialOriginal: '', partialTranslation: '' }
+  }
+
+  private utterance(id: string, original: string, translation: string, isFinal: boolean): Utterance {
+    return { id, original, translation, originalLang: this.languages.source, translationLang: this.languages.target, isFinal }
   }
 
   private view(o: Open, isFinal: boolean): Utterance {
-    return { id: o.id, en: (o.finalEn + o.partialEn).trim(), ru: (o.finalRu + o.partialRu).trim(), isFinal }
+    return this.utterance(o.id, (o.finalOriginal + o.partialOriginal).trim(), (o.finalTranslation + o.partialTranslation).trim(), isFinal)
   }
 
   private emit(out: Utterance[], u: Utterance): void {
-    // Never create a row without English (e.g. a translation whose source we have not seen).
-    if (u.en === '') return
-    const key = `${u.en}\u0000${u.ru}\u0000${u.isFinal}`
+    // Never create a row without the original (e.g. a translation whose source we have not seen).
+    if (u.original === '') return
+    const key = `${u.original}\u0000${u.translation}\u0000${u.isFinal}`
     if (this.lastEmitted.get(u.id) === key) return
     this.lastEmitted.delete(u.id)
     this.lastEmitted.set(u.id, key)
@@ -81,28 +88,28 @@ export class TokenAssembler {
     out.push(u)
   }
 
-  private curHasEn(): boolean {
-    return this.cur.finalEn !== '' || this.cur.partialEn !== ''
+  private curHasOriginal(): boolean {
+    return this.cur.finalOriginal !== '' || this.cur.partialOriginal !== ''
   }
 
-  /** The closed segment a Russian token should go to, or null for the open segment. */
+  /** The closed segment a translation token should go to, or null for the open segment. */
   private lateTarget(): Closed | null {
     // Continue the segment already receiving tokens in this response (no boundary marker exists inside one).
     for (const c of this.awaiting) if (this.touched.has(c)) return c
     // Otherwise the oldest segment that has no translation yet.
-    const waiting = this.awaiting.find((c) => c.ru === '' && c.partialRu === '')
+    const waiting = this.awaiting.find((c) => c.translation === '' && c.partialTranslation === '')
     if (waiting) return waiting
-    // All closed segments have Russian: keep extending the newest one only while the open segment has no English.
+    // All closed segments have translation: keep extending the newest one only while the open segment has no original.
     const last = this.awaiting[this.awaiting.length - 1]
-    return last && !this.curHasEn() ? last : null
+    return last && !this.curHasOriginal() ? last : null
   }
 
   /** Feed the tokens of one response. Returns the utterances that changed, in order. */
   push(tokens: SonioxToken[]): Utterance[] {
     const out: Utterance[] = []
-    this.cur.partialEn = ''
-    this.cur.partialRu = ''
-    for (const c of this.awaiting) c.partialRu = ''
+    this.cur.partialOriginal = ''
+    this.cur.partialTranslation = ''
+    for (const c of this.awaiting) c.partialTranslation = ''
     const touched = (this.touched = new Set<Closed>())
 
     for (const t of tokens) {
@@ -111,28 +118,28 @@ export class TokenAssembler {
         this.close(out)
         continue
       }
-      const isRu = t.translation_status === 'translation'
-      if (isRu) {
+      const isTranslation = t.translation_status === 'translation'
+      if (isTranslation) {
         const late = this.lateTarget()
         if (late) {
-          if (t.is_final) late.ru += t.text
-          else late.partialRu += t.text
+          if (t.is_final) late.translation += t.text
+          else late.partialTranslation += t.text
           touched.add(late)
           continue
         }
         // Open segment's own translation: the closed segments are done.
         this.awaiting = []
-        if (t.is_final) this.cur.finalRu += t.text
-        else this.cur.partialRu += t.text
+        if (t.is_final) this.cur.finalTranslation += t.text
+        else this.cur.partialTranslation += t.text
       } else if (t.is_final) {
-        this.cur.finalEn += t.text
+        this.cur.finalOriginal += t.text
       } else {
-        this.cur.partialEn += t.text
+        this.cur.partialOriginal += t.text
       }
     }
 
     for (const c of this.awaiting) {
-      if (touched.has(c)) this.emit(out, { id: c.id, en: c.en, ru: (c.ru + c.partialRu).trim(), isFinal: true })
+      if (touched.has(c)) this.emit(out, this.utterance(c.id, c.original, (c.translation + c.partialTranslation).trim(), true))
     }
     this.emit(out, this.view(this.cur, false))
     return out
@@ -140,15 +147,15 @@ export class TokenAssembler {
 
   private close(out: Utterance[]): void {
     const u = this.view(this.cur, true)
-    if (u.en === '') {
+    if (u.original === '') {
       // Nothing was said (or only an orphan translation): reuse the id.
-      this.cur.finalRu = ''
-      this.cur.partialEn = ''
-      this.cur.partialRu = ''
+      this.cur.finalTranslation = ''
+      this.cur.partialOriginal = ''
+      this.cur.partialTranslation = ''
       return
     }
     this.emit(out, u)
-    this.awaiting.push({ id: u.id, en: u.en, ru: this.cur.finalRu, partialRu: this.cur.partialRu })
+    this.awaiting.push({ id: u.id, original: u.original, translation: this.cur.finalTranslation, partialTranslation: this.cur.partialTranslation })
     while (this.awaiting.length > MAX_AWAITING) this.awaiting.shift()
     this.cur = this.fresh()
   }

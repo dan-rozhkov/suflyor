@@ -27,7 +27,25 @@ describe('buildMessages', () => {
     const [sys] = buildMessages('', ['hi'])
     expect(sys.content).not.toMatch(/RU:/)
     expect(sys.content).not.toMatch(/Russian meaning/)
-    expect(sys.content).toMatch(/EN: <first English reply/)
+    expect(sys.content).toMatch(/REPLY: <first English reply/)
+  })
+
+  it('names the languages and keeps the default wording for en/ru', () => {
+    const [sys] = buildMessages('', ['hi'], { callLanguage: 'de', userLanguage: 'fr' })
+    expect(sys.content).toContain('coach for a French speaker who is on a live German-language call.')
+    expect(sys.content).toContain('The user is the French speaker on the call.')
+    expect(sys.content).toContain('Each German reply must be ONE sentence, at most 15 words')
+    expect(sys.content).toContain('in German even when some lines of the transcript are in another language')
+    expect(sys.content).toContain('REPLY: <first German reply, one sentence, max 15 words>')
+    expect(sys.content).not.toMatch(/English|Russian/)
+    expect(buildMessages('', ['hi'])[0]).toEqual(buildMessages('', ['hi'], { callLanguage: 'en', userLanguage: 'ru' })[0])
+  })
+
+  it('drops the user speaker when translation is off', () => {
+    const [sys] = buildMessages('', ['hi'], { callLanguage: 'es' })
+    expect(sys.content).toContain('coach for a person who is on a live Spanish-language call.')
+    expect(sys.content).not.toContain('The user is the')
+    expect(sys.content).not.toMatch(/speaker who|speaker on the call/)
   })
 
   it('exports the client limits', () => {
@@ -37,5 +55,11 @@ describe('buildMessages', () => {
 
   it('says so when there is no context', () => {
     expect(buildMessages('  ', ['hi'])[1].content).toContain('(no context provided)')
+  })
+
+  it('uses the right article before a language name', () => {
+    const system = buildMessages('', ['hi'], { callLanguage: 'ru', userLanguage: 'en' })[0].content
+    expect(system).toContain('coach for an English speaker who is on a live Russian-language call')
+    expect(system).toContain('The user is the English speaker on the call.')
   })
 })

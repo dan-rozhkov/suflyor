@@ -1,6 +1,6 @@
 import { paragraphs } from './sentences'
 import type { Chapter } from './chapters'
-import type { Utterance } from './types'
+import { shownText, type Utterance } from './types'
 
 export interface TranscriptInput {
   utterances: Utterance[]
@@ -12,15 +12,15 @@ export interface TranscriptInput {
 
 const collapse = (s: string): string => s.replace(/\s+/g, ' ').trim()
 
-/** The call as markdown: Russian paragraphs with their times, the English of each utterance as a quote under them. */
+/** The call as markdown: paragraphs of the shown text with their times. When the call was translated, the original of each utterance is a quote under them; without translation there is no quote. */
 export function buildTranscript({ utterances, stamps, chapters, clock, savedAt }: TranscriptInput): string {
   const titles = new Map<string, string>()
   for (const c of chapters) titles.set(`${c.key.id}:${c.key.para}`, collapse(c.title))
   const blocks = ['# Call transcript', `Saved ${savedAt}`]
   for (const u of utterances) {
-    const paras = paragraphs(u.ru).map(collapse)
-    const en = collapse(u.en)
-    if (!paras.length && !en) continue
+    const paras = paragraphs(shownText(u)).map(collapse)
+    const quote = u.translationLang ? collapse(u.original) : ''
+    if (!paras.length && !quote) continue
     const times = stamps.get(u.id) ?? []
     const time = (i: number): string => (times[i] === undefined ? '' : `**${clock(times[i])}**`)
     const heading = (i: number): void => {
@@ -32,10 +32,10 @@ export function buildTranscript({ utterances, stamps, chapters, clock, savedAt }
         heading(i)
         blocks.push([time(i), text].filter(Boolean).join(' '))
       })
-      if (en) blocks.push(`> ${en}`)
+      if (quote) blocks.push(`> ${quote}`)
     } else {
       heading(0)
-      blocks.push([time(0), `> ${en}`].filter(Boolean).join('\n'))
+      blocks.push([time(0), `> ${quote}`].filter(Boolean).join('\n'))
     }
   }
   return `${blocks.join('\n\n')}\n`

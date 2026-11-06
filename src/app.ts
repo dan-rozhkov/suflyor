@@ -1,13 +1,15 @@
 import '@fontsource-variable/nunito'
 import './tokens.css'
 import './app.css'
-import type { Utterance } from './types'
-import { englishForHero, paragraphParts, paragraphs } from './sentences'
+import { shownLang, shownText, type Utterance } from './types'
+import { originalForHero, paragraphParts, paragraphs, paragraphText, sentenceGap } from './sentences'
 import { createSonioxClient } from './soniox'
 import { startMic } from './mic'
 import { createSession, MIC_DENIED_MESSAGE, type SessionState } from './session'
 import { BAD_CODE_MESSAGE, fetchToken } from './token'
 import { loadContext, saveContext } from './context'
+import { LANGUAGES } from './languages'
+import { feedLanguage, loadSettings, saveSettings, withSource, withTarget, type Settings } from './settings'
 import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
 import { isInstalledApp, rootShortfall } from './viewport'
@@ -15,7 +17,7 @@ import { addHaptic, addVibration } from './haptics'
 import { ICON_ALERT, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CLOSE, ICON_MORE, ICON_PAPERCLIP, ICON_RECORD, ICON_REFRESH, ICON_SPARK, ICON_STOP } from './icons'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 import { buildTranscript, saveMarkdown, transcriptFileName } from './transcript'
-import { requestSummary, summaryLines, summaryMeta } from './summary'
+import { requestSummary, summaryLabels, summaryLines, summaryMeta } from './summary'
 import type { Summary } from './types'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -30,6 +32,7 @@ const statusEl = $<HTMLElement>('status')
 const statusIconEl = $<HTMLElement>('status-icon')
 const statusTextEl = $<HTMLElement>('status-text')
 const diagEl = $<HTMLElement>('diag')
+const settingsItemEl = $<HTMLButtonElement>('settings')
 const downloadEl = $<HTMLButtonElement>('download')
 const forgetEl = $<HTMLButtonElement>('forget')
 const moreEl = $<HTMLButtonElement>('more')
@@ -52,13 +55,20 @@ const contextFileBtnEl = $<HTMLButtonElement>('context-file-btn')
 const contextFileEl = $<HTMLInputElement>('context-file')
 const contextSaveEl = $<HTMLButtonElement>('context-save')
 const contextCloseEl = $<HTMLButtonElement>('context-close')
+const settingsPanelEl = $<HTMLElement>('settings-panel')
+const settingsCloseEl = $<HTMLButtonElement>('settings-close')
+const settingsTitleEl = $<HTMLElement>('settings-title')
+const settingsSourceEl = $<HTMLSelectElement>('settings-source')
+const settingsTranslateEl = $<HTMLInputElement>('settings-translate')
+const settingsTargetRowEl = $<HTMLElement>('settings-target-row')
+const settingsTargetEl = $<HTMLSelectElement>('settings-target')
 const waveEl = $<HTMLElement>('wave')
 const elapsedEl = $<HTMLElement>('elapsed')
 
 const STORAGE_KEY = 'suflyorAccessCode'
 const CODE_PLACEHOLDER = 'Access code'
 const MAX_FILE_BYTES = 1024 * 1024
-const NO_CONTEXT_NOTICE = 'Translation continues without the call notes.'
+const NO_CONTEXT_NOTICE = 'Continuing without the call notes.'
 const NO_LOCK_NOTICE = 'Keep the screen on: locking it stops the microphone.'
 
 function readCode(): string {
@@ -116,6 +126,8 @@ let lastState: SessionState | undefined
 /** When each paragraph of each utterance first appeared. Never changes afterwards, even if the text is revised. */
 const stamps = new Map<string, number[]>()
 let chapters: Chapter[] = []
+/** The settings of the call that is running or just ended. Read at each Start, so a change mid-call never reaches it. */
+let run: Settings = loadSettings()
 
 stopEl.innerHTML = ICON_STOP
 sparkEl.innerHTML = ICON_SPARK
@@ -124,6 +136,8 @@ toggleEl.insertAdjacentHTML('afterbegin', ICON_RECORD)
 moreEl.innerHTML = ICON_MORE
 contextFileBtnEl.innerHTML = ICON_PAPERCLIP
 contextCloseEl.innerHTML = ICON_CLOSE
+settingsCloseEl.innerHTML = ICON_CLOSE
+document.querySelectorAll('.select-chev').forEach((el) => (el.innerHTML = ICON_CHEVRON_DOWN))
 
 function logoIcon(): Node {
   return $<HTMLTemplateElement>('logo-icon').content.firstElementChild!.cloneNode(true)
@@ -171,7 +185,7 @@ formEl.addEventListener('submit', (e) => {
 
 /* context panel */
 
-let contextOpen = false
+let openPanel: 'context' | 'settings' | null = null
 const CONTEXT_CUT_NOTE = 'Saved the first 100,000 characters.'
 const CONTEXT_MEMORY_NOTE = 'Saved for this session only.'
 
@@ -194,7 +208,7 @@ function setContextError(text: string): void {
 
 function openContext(): void {
   if (running || !code) return
-  contextOpen = true
+  openPanel = 'context'
   setToast('', null)
   formEl.hidden = true
   feedWrapEl.hidden = true
@@ -203,16 +217,20 @@ function openContext(): void {
   setContextError('')
 }
 
-function closePanel(): void {
-  if (!contextOpen) return
-  contextOpen = false
+/** Closes whichever panel is open. Focus goes back to the More button only when asked: other callers are changing the screen. */
+function closePanel(returnFocus = false): void {
+  if (!openPanel) return
+  const was = openPanel
+  openPanel = null
   contextPanelEl.hidden = true
+  settingsPanelEl.hidden = true
   formEl.hidden = !!code
   feedWrapEl.hidden = !code
+  if (returnFocus && was === 'settings') moreEl.focus()
 }
 
 contextEl.addEventListener('click', openContext)
-contextCloseEl.addEventListener('click', closePanel)
+contextCloseEl.addEventListener('click', () => closePanel())
 contextSaveEl.addEventListener('click', () => {
   const r = saveContext(contextTextEl.value)
   renderContextLink()
@@ -245,17 +263,62 @@ contextFileEl.addEventListener('change', () => {
   )
 })
 
+/* settings panel */
+
+function fillLanguages(select: HTMLSelectElement): void {
+  for (const l of LANGUAGES) select.append(new Option(l.name, l.code))
+}
+fillLanguages(settingsSourceEl)
+fillLanguages(settingsTargetEl)
+
+function paintSettings(): void {
+  const s = loadSettings()
+  settingsSourceEl.value = s.source
+  settingsTargetEl.value = s.target
+  settingsTranslateEl.checked = s.translate
+  settingsTargetRowEl.hidden = !s.translate
+}
+
+/** Changes save at once. Swapping can change the other select, so both are repainted. */
+function changeSettings(next: Settings): void {
+  saveSettings(next)
+  paintSettings()
+  renderEmpty()
+}
+
+function openSettings(): void {
+  if (running || !code) return
+  openPanel = 'settings'
+  setToast('', null)
+  formEl.hidden = true
+  feedWrapEl.hidden = true
+  settingsPanelEl.hidden = false
+  paintSettings()
+  // Not a select: on iPhone focusing one opens its picker over the panel.
+  settingsTitleEl.focus()
+}
+
+settingsItemEl.addEventListener('click', () => {
+  setMenu(false)
+  openSettings()
+})
+settingsCloseEl.addEventListener('click', () => closePanel(true))
+settingsSourceEl.addEventListener('change', () => changeSettings(withSource(loadSettings(), settingsSourceEl.value)))
+settingsTargetEl.addEventListener('change', () => changeSettings(withTarget(loadSettings(), settingsTargetEl.value)))
+settingsTranslateEl.addEventListener('change', () => changeSettings({ ...loadSettings(), translate: settingsTranslateEl.checked }))
+
 /* menu */
 
 function setMenu(open: boolean): void {
+  settingsItemEl.hidden = running
   // The file save can leave the page, which would stop the microphone mid-call. With nothing said there is nothing to save.
-  downloadEl.hidden = running || !order.some((u) => u.ru.trim() || u.en.trim())
+  downloadEl.hidden = running || !order.some((u) => u.translation.trim() || u.original.trim())
   menuEl.hidden = !open
   moreEl.setAttribute('aria-expanded', String(open))
 }
 
 function menuItems(): HTMLElement[] {
-  return [downloadEl, forgetEl].filter((el) => !el.hidden)
+  return [settingsItemEl, downloadEl, forgetEl].filter((el) => !el.hidden)
 }
 
 moreEl.addEventListener('click', () => {
@@ -324,13 +387,21 @@ function empty(title: string, text: string): HTMLElement {
   return wrap
 }
 
+/** The settings in force: the call's own while one runs, the saved ones otherwise. */
+const feedSettings = (): Settings => (running ? run : loadSettings())
+
 function renderEmpty(): void {
+  const s = feedSettings()
+  // Text of an ended call stays on screen after the settings change: the label describes that text.
+  const last = !running && order[order.length - 1]
+  feedEl.setAttribute('aria-label', (last ? last.translationLang : s.translate) ? 'Translation' : 'Transcript')
   if (order.length) return
+  const appears = `${s.translate ? 'The translation' : 'The transcript'} appears here.`
   feedEl.replaceChildren(
     !running
-      ? empty('Ready for your call.', 'Tap Start. The translation appears here.')
+      ? empty('Ready for your call.', `Tap Start. ${appears}`)
       : phase === 'listening'
-        ? empty('Listening.', 'The translation appears here.')
+        ? empty('Listening.', appears)
         : empty('Getting ready.', 'Allow the microphone if asked.')
   )
 }
@@ -348,23 +419,25 @@ function stampsFor(id: string, count: number): number[] {
 
 function paintRow(row: HTMLElement, u: Utterance, latest: boolean): void {
   row.className = `utt${latest ? ' utt-latest' : ''}${u.isFinal ? '' : ' partial'}`
-  const parts = u.ru.trim() ? paragraphParts(u.ru) : [{ done: '', live: '' }]
-  const empty = !u.ru.trim()
+  const text = shownText(u)
+  const parts = text.trim() ? paragraphParts(text) : [{ done: '', live: '' }]
+  const empty = !text.trim()
   const times = stampsFor(u.id, parts.length)
   const out: HTMLElement[] = parts.map((part, i) => {
     const p = document.createElement('p')
-    p.className = 'utt-ru'
-    p.lang = 'ru'
+    p.className = 'utt-text'
+    p.lang = shownLang(u)
+    p.dir = 'auto'
     const time = document.createElement('time')
     time.className = 'utt-time'
     time.dateTime = new Date(times[i]).toISOString()
     time.textContent = clockFmt.format(times[i])
     p.append(time)
     if (!latest) {
-      p.append(empty ? '…' : [part.done, part.live].filter(Boolean).join(' '))
+      p.append(empty ? '…' : paragraphText(part))
       return p
     }
-    if (part.done) p.append(`${part.done} `)
+    if (part.done) p.append(part.done + sentenceGap(part.done))
     const live = document.createElement('span')
     live.className = 'utt-live'
     live.textContent = empty ? '…' : part.live
@@ -372,12 +445,13 @@ function paintRow(row: HTMLElement, u: Utterance, latest: boolean): void {
     return p
   })
   if (latest) {
-    const en = englishForHero(u.ru, u.en)
-    if (en) {
+    const original = u.translationLang ? originalForHero(u.translation, u.original) : ''
+    if (original) {
       const p = document.createElement('p')
-      p.className = 'utt-en'
-      p.lang = 'en'
-      p.textContent = en
+      p.className = 'utt-original'
+      p.lang = u.originalLang
+      p.dir = 'auto'
+      p.textContent = original
       out.push(p)
     }
   }
@@ -413,7 +487,7 @@ function renderUtterances(list: Utterance[]): void {
   }
   if (stick) feedEl.scrollTop = feedEl.scrollHeight
   renderSuggestButton()
-  chapterer.onText(order.slice(runStart).reduce((n, u) => n + u.ru.length, 0))
+  chapterer.onText(order.slice(runStart).reduce((n, u) => n + shownText(u).length, 0))
   scheduleCurrent()
 }
 
@@ -454,7 +528,7 @@ function currentParagraphs(): ChapterPara[] {
   const out: ChapterPara[] = []
   for (const u of order.slice(runStart)) {
     const times = stamps.get(u.id) ?? []
-    paragraphs(u.ru).forEach((text, i) => out.push({ key: { id: u.id, para: i }, text, at: times[i] ?? Date.now() }))
+    paragraphs(shownText(u)).forEach((text, i) => out.push({ key: { id: u.id, para: i }, text, at: times[i] ?? Date.now() }))
   }
   return out
 }
@@ -462,6 +536,7 @@ function currentParagraphs(): ChapterPara[] {
 const chapterer = createChapterer({
   getCode: () => code,
   getParagraphs: currentParagraphs,
+  getLanguage: () => feedLanguage(run),
   onChange: (list) => {
     chapters = list
     renderChapters()
@@ -534,7 +609,6 @@ function newChapterBtn(): HTMLButtonElement {
   b.className = 'ch-row'
   const title = document.createElement('span')
   title.className = 'ch-title'
-  title.lang = 'ru'
   const time = document.createElement('span')
   time.className = 'ch-time'
   const dash = document.createElement('span')
@@ -565,6 +639,9 @@ function renderChapters(): void {
   chapters.forEach((c, i) => {
     const [title, time] = chapterBtns[i].children as unknown as HTMLElement[]
     if (title.textContent !== c.title) title.textContent = c.title
+    const started = order.find((u) => u.id === c.key.id)
+    title.lang = started ? shownLang(started) : feedLanguage(run)
+    title.dir = 'auto'
     const t = clockShortFmt.format(c.at)
     if (time.textContent !== t) time.textContent = t
   })
@@ -777,15 +854,16 @@ let copiedTimer: number | undefined
 const suggester = createSuggester({
   getCode: () => code,
   getContext: () => loadContext(),
+  getLanguages: () => ({ callLanguage: run.source, userLanguage: run.translate ? run.target : undefined }),
   onUpdate: onSuggestUpdate
 })
 
-/** The English of this run, including the open utterance, so the line just spoken is sent. */
+/** The original of this run, including the open utterance, so the line just spoken is sent. */
 function suggestLines(): string[] {
   return order
     .slice(runStart)
-    .filter((u) => u.en.trim())
-    .map((u) => u.en.trim())
+    .filter((u) => u.original.trim())
+    .map((u) => u.original.trim())
 }
 
 function renderSuggestButton(): void {
@@ -847,7 +925,8 @@ function newReplyItem(): HTMLElement {
   hidden.className = 'sr-only'
   const t = document.createElement('span')
   t.className = 'opt-text'
-  t.lang = 'en'
+  t.lang = run.source
+  t.dir = 'auto'
   b.append(hidden, t)
   addHaptic(b)
   b.addEventListener('click', () => copyText(b.dataset.text ?? ''))
@@ -1045,6 +1124,10 @@ interface SummaryBlock {
   runStart: number
   startedAt: number
   durationMs: number
+  /** The language of the summary, the one the feed showed. Taken at Stop: the settings may change before the tap. */
+  language: string
+  /** The language spoken on the call. */
+  callLanguage: string
   ctrl: AbortController | null
   done: boolean
 }
@@ -1052,7 +1135,7 @@ interface SummaryBlock {
 /** The block at the end of the feed for the run that just ended; null once the next run starts or the code is forgotten. */
 let summary: SummaryBlock | null = null
 /** The call the button covers. It outlives a Start that heard nothing, so that Start does not lose the call before it. */
-let summaryRun: Pick<SummaryBlock, 'runStart' | 'startedAt' | 'durationMs'> | null = null
+let summaryRun: Pick<SummaryBlock, 'runStart' | 'startedAt' | 'durationMs' | 'language' | 'callLanguage'> | null = null
 
 function dropSummary(): void {
   const s = summary
@@ -1072,12 +1155,14 @@ function setSummaryBusy(s: SummaryBlock, busy: boolean): void {
 
 /** After a run with text: a button at the end of the feed. The summary costs a call, so it waits for a tap. */
 function offerSummary(): void {
-  if (order.slice(runStart).some((u) => u.en.trim())) summaryRun = { runStart, startedAt, durationMs: Date.now() - startedAt }
+  if (order.slice(runStart).some((u) => u.original.trim())) {
+    summaryRun = { runStart, startedAt, durationMs: Date.now() - startedAt, language: feedLanguage(run), callLanguage: run.source }
+  }
   if (!code || !summaryRun) return
   dropSummary()
   const el = document.createElement('section')
   el.className = 'summary summary-enter'
-  el.lang = 'ru'
+  el.lang = summaryRun.language
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'summary-btn'
@@ -1147,27 +1232,30 @@ function paintSummary(s: SummaryBlock, data: Summary, cut: boolean): void {
   title.textContent = data.title
   const meta = document.createElement('p')
   meta.className = 'summary-meta'
-  meta.textContent = summaryMeta(s.startedAt, s.durationMs)
+  meta.textContent = summaryMeta(s.startedAt, s.durationMs, s.language)
+  const labels = summaryLabels(s.language)
   const out: HTMLElement[] = [title, meta]
   if (cut) {
     const note = document.createElement('p')
     note.className = 'summary-meta'
-    note.textContent = 'Итоги только по последней части разговора.'
+    note.textContent = labels.cut
     out.push(note)
   }
   if (data.actionItems.length) {
     const actions = summaryList(data.actionItems, (a, li) => {
       li.textContent = a.owner ? `${a.owner}: ${a.task}` : a.task
     })
-    out.push(summaryHeading('Задачи'), actions)
+    out.push(summaryHeading(labels.actions), actions)
   }
-  if (data.overview.length) out.push(summaryHeading('Обзор'), summaryList(data.overview, (t, li) => (li.textContent = t)))
+  if (data.overview.length) out.push(summaryHeading(labels.overview), summaryList(data.overview, (t, li) => (li.textContent = t)))
   for (const t of data.topics) out.push(summaryHeading(t.title), summaryList(t.bullets, (b, li) => (li.textContent = b)))
   s.btn.remove()
   s.skeletons.remove()
   s.el.classList.add('summary-done')
+  // Only now: with the English button inside, auto would read the block as left to right.
+  s.el.dir = 'auto'
   s.el.append(...out)
-  s.status.textContent = 'Итоги готовы'
+  s.status.textContent = labels.ready
   jumpToEl(s.el)
   title.focus({ preventScroll: true })
 }
@@ -1175,11 +1263,11 @@ function paintSummary(s: SummaryBlock, data: Summary, cut: boolean): void {
 async function runSummary(s: SummaryBlock): Promise<void> {
   // A second tap must not start another paid call.
   if (summary !== s || s.ctrl || s.done) return
-  const { lines, cut } = summaryLines(order.slice(s.runStart).map((u) => u.en.trim()).filter(Boolean))
+  const { lines, cut } = summaryLines(order.slice(s.runStart).map((u) => u.original.trim()).filter(Boolean))
   const ctrl = new AbortController()
   s.ctrl = ctrl
   setSummaryBusy(s, true)
-  const r = await requestSummary({ code, lines, context: loadContext(), signal: ctrl.signal })
+  const r = await requestSummary({ code, lines, context: loadContext(), language: s.language, callLanguage: s.callLanguage, signal: ctrl.signal })
   // Forget code or the next Start may have removed the block while the request ran.
   if (summary !== s) return
   s.ctrl = null
@@ -1211,15 +1299,17 @@ const session = createSession({
   createClient: ({ attempt, ...h }) => {
     // After two failed reconnects, try without context: a rejected context must not stop the translation.
     const context = buildSonioxContext(loadContext())
+    // The call's own languages, so a reconnect after a settings change keeps the same ones.
+    const languages = { source: run.source, target: run.translate ? run.target : null }
     if (attempt < 2) {
       if (notice === NO_CONTEXT_NOTICE) notice = ''
-      return createSonioxClient({ ...h, context })
+      return createSonioxClient({ ...h, context, languages })
     }
     if (context && running) {
       notice = NO_CONTEXT_NOTICE
       applyToast(lastState)
     }
-    return createSonioxClient(h)
+    return createSonioxClient({ ...h, languages })
   },
   onUtterances: renderUtterances,
   onState,
@@ -1241,6 +1331,9 @@ toggleEl.addEventListener('click', () => {
   sentSamples = 0
   peak = 0
   notice = ''
+  // Before session.start() and with no await between: the microphone must be requested inside this tap.
+  run = loadSettings()
+  renderEmpty()
   // An unused or pending summary belongs to the run that is over; a finished one stays as history.
   if (summary?.done) summary = null
   else dropSummary()

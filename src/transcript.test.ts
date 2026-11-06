@@ -2,7 +2,23 @@ import { describe, expect, it } from 'vitest'
 import { buildTranscript, transcriptFileName } from './transcript'
 import type { Utterance } from './types'
 
-const u = (id: string, en: string, ru: string): Utterance => ({ id, en, ru, isFinal: true })
+const u = (id: string, original: string, translation: string): Utterance => ({
+  id,
+  original,
+  translation,
+  originalLang: 'en',
+  translationLang: 'ru',
+  isFinal: true
+})
+/** An utterance of a call without translation. */
+const plain = (id: string, original: string): Utterance => ({
+  id,
+  original,
+  translation: '',
+  originalLang: 'en',
+  translationLang: null,
+  isFinal: true
+})
 const clock = (ms: number): string => `t${ms}`
 const base = { chapters: [], clock, savedAt: '6 Nov, 19:30' }
 
@@ -56,6 +72,34 @@ describe('buildTranscript', () => {
     const text = buildTranscript({ ...base, utterances: [u('a', 'Hi', 'Привет.')], stamps: new Map() })
     expect(text).toContain('\n\nПривет.\n\n> Hi\n')
     expect(text).not.toContain('**')
+  })
+})
+
+describe('buildTranscript without translation', () => {
+  it('writes the original as paragraphs and adds no quote', () => {
+    const text = buildTranscript({
+      ...base,
+      utterances: [plain('a', 'We ship on Friday. Please confirm.')],
+      stamps: new Map([['a', [4]]])
+    })
+    expect(text).toContain('**t4** We ship on Friday. Please confirm.')
+    expect(text).not.toContain('>')
+  })
+
+  it('skips an utterance with no text and keeps chapter headings', () => {
+    const text = buildTranscript({
+      ...base,
+      chapters: [{ key: { id: 'b', para: 0 }, title: 'Budget', at: 5 }],
+      utterances: [plain('a', '  '), plain('b', 'Money talk.')],
+      stamps: new Map([['b', [2]]])
+    })
+    expect(text).toContain('## Budget\n\n**t2** Money talk.')
+    expect(text.match(/\*\*/g)).toHaveLength(2)
+  })
+
+  it('mixes calls: each utterance follows its own settings', () => {
+    const text = buildTranscript({ ...base, utterances: [plain('a', 'Plain.'), u('b', 'Two.', 'Два.')], stamps: new Map() })
+    expect(text).toContain('Plain.\n\nДва.\n\n> Two.\n')
   })
 })
 

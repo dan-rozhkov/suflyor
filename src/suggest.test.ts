@@ -33,9 +33,9 @@ const hanging = (): typeof fetch =>
       init?.signal?.addEventListener('abort', () => rej(new DOMException('Aborted', 'AbortError')))
     })) as typeof fetch
 
-function setup(fetchImpl: typeof fetch, code = 'fictional-code-0123456789abcdef') {
+function setup(fetchImpl: typeof fetch, code = 'fictional-code-0123456789abcdef', languages: () => { callLanguage: string; userLanguage?: string } = () => ({ callLanguage: 'en', userLanguage: 'ru' })) {
   const updates: SuggestUpdate[] = []
-  const s = createSuggester({ getCode: () => code, getContext: () => 'ctx text', onUpdate: (u) => updates.push(u), fetchImpl })
+  const s = createSuggester({ getCode: () => code, getContext: () => 'ctx text', getLanguages: languages, onUpdate: (u) => updates.push(u), fetchImpl })
   return { s, updates }
 }
 
@@ -58,7 +58,7 @@ describe('createSuggester', () => {
     expect(url).toBe('/api/suggest')
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer fictional-code-0123456789abcdef')
-    expect(JSON.parse(init.body as string)).toEqual({ lines: ['How is it going?'], context: 'ctx text' })
+    expect(JSON.parse(init.body as string)).toEqual({ lines: ['How is it going?'], context: 'ctx text', callLanguage: 'en', userLanguage: 'ru' })
     expect(updates[0]).toEqual({ status: 'streaming', options: [] })
     expect(updates[updates.length - 1]).toEqual({ status: 'done', options: ['Hi there.', 'Ok.'] })
   })
@@ -221,12 +221,28 @@ describe('createSuggester', () => {
     expect(updates[updates.length - 1]).toMatchObject({ status: 'error', message: SUGGEST_TIMEOUT_MESSAGE })
   })
 
+  it('sends the languages read at send time, and none for the user when translation is off', async () => {
+    const f = vi.fn(async () => streamResponse(sse('REPLY: Ok.\n')))
+    let langs: { callLanguage: string; userLanguage?: string } = { callLanguage: 'de', userLanguage: 'fr' }
+    const { s } = setup(f as unknown as typeof fetch, undefined, () => langs)
+    const bodyAt = (n: number): Record<string, unknown> => JSON.parse((f.mock.calls[n] as unknown as [string, RequestInit])[1].body as string)
+    s.request(['Hallo.'])
+    await flush()
+    expect(bodyAt(0)).toMatchObject({ callLanguage: 'de', userLanguage: 'fr' })
+    langs = { callLanguage: 'es' }
+    s.request(['Hola.'])
+    await flush()
+    expect(bodyAt(1).callLanguage).toBe('es')
+    expect('userLanguage' in bodyAt(1)).toBe(false)
+  })
+
   it('sends only the last lines and the first context characters', async () => {
     const f = vi.fn(async () => streamResponse(sse('EN: Ok.\n')))
     const updates: SuggestUpdate[] = []
     const s = createSuggester({
       getCode: () => 'fictional-code-0123456789abcdef',
       getContext: () => 'c'.repeat(MAX_CONTEXT_CHARS + 10),
+      getLanguages: () => ({ callLanguage: 'en', userLanguage: 'ru' }),
       onUpdate: (u) => updates.push(u),
       fetchImpl: f as unknown as typeof fetch
     })

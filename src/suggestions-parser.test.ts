@@ -20,6 +20,23 @@ describe('parser', () => {
     expect(r.meaningRu).toBe('Раз два')
   })
 
+  it('parses REPLY lines, also split across chunks', () => {
+    const p = new SuggestionParser()
+    const text = 'REPLY: Gerne, das passt.\nREPLY: "Ich prüfe das kurz."\nRU: Согласие.\n'
+    let last = p.push('')
+    for (const ch of text.match(/.{1,2}/gs)!) last = p.push(ch)
+    expect(last.options).toEqual(['Gerne, das passt.', 'Ich prüfe das kurz.'])
+    expect(last.meaningRu).toBe('Согласие.')
+    expect(new SuggestionParser().push('REPLY: Gerne, d').options).toEqual(['Gerne, d'])
+    expect(new SuggestionParser().push('- reply: ok\n').options).toEqual(['ok'])
+  })
+
+  it('counts REPLY and EN lines toward the same limit of 3', () => {
+    const p = new SuggestionParser()
+    p.push('REPLY: One\nEN: Two\nREPLY: Three\nREPLY: Four')
+    expect(p.end().options).toEqual(['One', 'Two', 'Three'])
+  })
+
   it('sse splitter and delta ignore reasoning', () => {
     const s = new SseSplitter()
     expect(s.push('data: {"a"')).toEqual([])

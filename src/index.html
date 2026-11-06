@@ -61,6 +61,25 @@
           <input id="context-file" type="file" accept=".md,.txt,text/plain,text/markdown" hidden />
           <button id="context-save" type="button" class="pill">Save</button>
         </section>
+        <section id="settings-panel" class="state context-panel" hidden aria-labelledby="settings-title">
+          <button id="settings-close" type="button" class="icon-btn panel-close" aria-label="Close"></button>
+          <h1 class="state-title" id="settings-title" tabindex="-1">Settings</h1>
+          <p class="state-text">Languages for your next call.</p>
+          <div class="settings-card">
+            <div class="settings-row">
+              <label class="settings-label" for="settings-source">Original language</label>
+              <span class="select-wrap"><select id="settings-source" class="select"></select><span class="select-chev" aria-hidden="true"></span></span>
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="settings-translate">Translation</label>
+              <span class="switch"><input id="settings-translate" class="switch-input" type="checkbox" role="switch" /><span class="switch-track" aria-hidden="true"></span></span>
+            </div>
+            <div class="settings-row" id="settings-target-row">
+              <label class="settings-label" for="settings-target">Translation language</label>
+              <span class="select-wrap"><select id="settings-target" class="select"></select><span class="select-chev" aria-hidden="true"></span></span>
+            </div>
+          </div>
+        </section>
         <div class="feed-wrap" id="feed-wrap">
           <div id="feed" class="feed" role="log" aria-label="Translation" aria-live="off" tabindex="0"></div>
           <nav id="chapters" class="chapters" aria-label="Chapters" hidden></nav>
@@ -70,6 +89,7 @@
           <button id="more" type="button" class="icon-btn" aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="menu"></button>
         </div>
         <div id="menu" class="menu" role="menu" hidden>
+          <button id="settings" type="button" class="menu-item" role="menuitem">Settings</button>
           <button id="download" type="button" class="menu-item" role="menuitem" hidden>Download transcript</button>
           <button id="forget" type="button" class="menu-item" role="menuitem">Forget code</button>
         </div>

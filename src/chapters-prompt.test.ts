@@ -36,6 +36,24 @@ describe('buildChapterMessages', () => {
   })
 })
 
+describe('buildChapterMessages languages', () => {
+  it('keeps the Russian wording for ru and by default', () => {
+    const [sys] = buildChapterMessages(['a'], '')
+    expect(sys.content).toContain('numbered paragraphs of a Russian translation of a live call. The translation is machine-made')
+    expect(sys.content).toContain('Titles are in Russian, 2 to 5 words')
+    expect(sys.content).toContain('"Обсуждение" or "Разговор"')
+    expect(buildChapterMessages(['a'], '', 'ru')[0]).toEqual(sys)
+  })
+
+  it('names the language for any other', () => {
+    const [sys] = buildChapterMessages(['a'], '', 'de')
+    expect(sys.content).toContain('numbered paragraphs of the German text of a live call. The text is machine-made')
+    expect(sys.content).toContain('Titles are in German, 2 to 5 words')
+    expect(sys.content).toContain('"Discussion" or "Conversation", or their equivalents')
+    expect(sys.content).not.toMatch(/Russian|Обсуждение/)
+  })
+})
+
 describe('parseChapters', () => {
   it('parses plain lines', () => {
     expect(parseChapters('0 | Начало\n12 | Сроки запуска', 20)).toEqual([

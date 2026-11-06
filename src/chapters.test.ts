@@ -30,10 +30,11 @@ function para(i: number, len = 50, id = 'u1'): ChapterPara {
 const paras = (n: number, len = 320, id = 'u1'): ChapterPara[] => Array.from({ length: n }, (_, i) => para(i, len, id))
 
 function setup(fetchImpl: typeof fetch, code = 'fictional-code-0123456789abcdef') {
-  const state = { paras: paras(4), code }
+  const state = { paras: paras(4), code, language: 'ru' }
   const changes: Chapter[][] = []
   const c = createChapterer({
     getCode: () => state.code,
+    getLanguage: () => state.language,
     getParagraphs: () => state.paras,
     onChange: (l) => changes.push(l),
     fetchImpl
@@ -41,7 +42,7 @@ function setup(fetchImpl: typeof fetch, code = 'fictional-code-0123456789abcdef'
   return { c, state, changes }
 }
 
-const bodyOf = (f: ReturnType<typeof vi.fn>, n = 0): { paragraphs: string[]; openTitle?: string } =>
+const bodyOf = (f: ReturnType<typeof vi.fn>, n = 0): { paragraphs: string[]; openTitle?: string; language?: string } =>
   JSON.parse((f.mock.calls[n][1] as RequestInit).body as string)
 
 beforeEach(() => {
@@ -50,6 +51,17 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('language', () => {
+  it('sends the language read at send time', async () => {
+    const f = vi.fn(async () => ok([{ start: 0, title: 'Thema' }]))
+    const { c, state } = setup(f as unknown as typeof fetch)
+    state.language = 'de'
+    c.onText(SIZE_CHARS)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(bodyOf(f).language).toBe('de')
+  })
 })
 
 describe('triggers', () => {

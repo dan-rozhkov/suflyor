@@ -1,3 +1,4 @@
+import { isLanguage } from './languages'
 import { SONIOX_TEMP_KEY_URL } from './soniox-url'
 import { OPENCODE_CHAT_URL } from './opencode-url'
 import { buildMessages, MAX_CONTEXT_CHARS, type ChatMessage } from './suggest-prompt'
@@ -128,24 +129,37 @@ async function readModelRequest(request: Request, env: Env, maxBytes = MAX_BODY_
   return { key, raw }
 }
 
+/** A language code from the body: undefined when absent, null when present but not on the list. */
+function readLanguage(v: unknown): string | undefined | null {
+  if (v === undefined || v === null) return undefined
+  return isLanguage(v) ? v : null
+}
+
 async function handleSuggest(request: Request, env: Env): Promise<Response> {
   const read = await readModelRequest(request, env)
   if (read instanceof Response) return read
   const { key, raw } = read
   let lines: string[]
   let context = ''
+  let languages = { callLanguage: 'en', userLanguage: 'ru' as string | undefined }
   try {
-    const body = JSON.parse(raw) as { lines?: unknown; context?: unknown }
+    const body = JSON.parse(raw) as { lines?: unknown; context?: unknown; callLanguage?: unknown; userLanguage?: unknown }
     if (!body || !Array.isArray(body.lines) || !body.lines.every((l) => typeof l === 'string')) throw new Error('lines')
     lines = body.lines as string[]
     if (typeof body.context === 'string') context = body.context
+    const call = readLanguage(body.callLanguage)
+    const user = readLanguage(body.userLanguage)
+    if (call === null || user === null) throw new Error('language')
+    // A call language without a user language means translation is off.
+    if (call) languages = { callLanguage: call, userLanguage: user }
+    else if (user) languages = { callLanguage: 'en', userLanguage: user }
     if (!lines.length || lines.length > MAX_LINES_IN || lines.some((l) => l.length > MAX_LINE_CHARS) || context.length > MAX_CONTEXT_IN) {
       throw new Error('limits')
     }
   } catch {
     return json({ error: 'bad-request' }, 400)
   }
-  const messages = buildMessages(context, lines)
+  const messages = buildMessages(context, lines, languages)
   try {
     const res = await askOpenCode(key, messages, SUGGEST_CALL)
     if (!res.ok || !res.body) {
@@ -164,21 +178,25 @@ async function handleChapters(request: Request, env: Env): Promise<Response> {
   const { key, raw } = read
   let paragraphs: string[]
   let openTitle = ''
+  let language = 'ru'
   try {
-    const body = JSON.parse(raw) as { paragraphs?: unknown; openTitle?: unknown }
+    const body = JSON.parse(raw) as { paragraphs?: unknown; openTitle?: unknown; language?: unknown }
     if (!body || !Array.isArray(body.paragraphs) || !body.paragraphs.every((p) => typeof p === 'string')) throw new Error('paragraphs')
     paragraphs = body.paragraphs as string[]
     if (body.openTitle !== undefined && body.openTitle !== null) {
       if (typeof body.openTitle !== 'string' || body.openTitle.length > MAX_CHAPTER_TITLE_CHARS) throw new Error('openTitle')
       openTitle = body.openTitle
     }
+    const lang = readLanguage(body.language)
+    if (lang === null) throw new Error('language')
+    if (lang) language = lang
     if (!paragraphs.length || paragraphs.length > MAX_CHAPTER_PARAGRAPHS || paragraphs.some((p) => p.length > MAX_CHAPTER_PARAGRAPH_CHARS) || paragraphs.join('').length > MAX_CHAPTER_WINDOW_CHARS) {
       throw new Error('limits')
     }
   } catch {
     return json({ error: 'bad-request' }, 400)
   }
-  const messages = buildChapterMessages(paragraphs, openTitle)
+  const messages = buildChapterMessages(paragraphs, openTitle, language)
   try {
     const content = await askForText(key, messages, CHAPTERS_CALL)
     if (!content) return json({ error: 'upstream' }, 502)
@@ -196,10 +214,15 @@ async function handleSummary(request: Request, env: Env): Promise<Response> {
   const { key, raw } = read
   let lines: string[]
   let context = ''
+  let languages = { callLanguage: 'en', language: 'ru' }
   try {
-    const body = JSON.parse(raw) as { lines?: unknown; context?: unknown }
+    const body = JSON.parse(raw) as { lines?: unknown; context?: unknown; callLanguage?: unknown; language?: unknown }
     if (!body || !Array.isArray(body.lines) || !body.lines.every((l) => typeof l === 'string')) throw new Error('lines')
     lines = body.lines as string[]
+    const call = readLanguage(body.callLanguage)
+    const lang = readLanguage(body.language)
+    if (call === null || lang === null) throw new Error('language')
+    languages = { callLanguage: call ?? 'en', language: lang ?? 'ru' }
     if (body.context !== undefined && body.context !== null) {
       if (typeof body.context !== 'string' || body.context.length > MAX_CONTEXT_CHARS) throw new Error('context')
       context = body.context
@@ -208,11 +231,11 @@ async function handleSummary(request: Request, env: Env): Promise<Response> {
   } catch {
     return json({ error: 'bad-request' }, 400)
   }
-  const messages = buildSummaryMessages(lines, context)
+  const messages = buildSummaryMessages(lines, context, languages)
   try {
     const content = await askForText(key, messages, SUMMARY_CALL)
     if (!content) return json({ error: 'upstream' }, 502)
-    const summary = parseSummary(content)
+    const summary = parseSummary(content, languages.language)
     if (!summary) return json({ error: 'upstream' }, 502)
     return json({ summary }, 200)
   } catch {

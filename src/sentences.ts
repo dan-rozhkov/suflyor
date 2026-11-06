@@ -1,7 +1,9 @@
 /** Minimum length of the hero sentence; shorter tails are merged with the sentence before. */
 export const MIN_HERO = 24
 
-const BOUNDARY = /[.!?…]+[»"”’')\]]*\s+(?=[\p{Lu}\p{Nd}"«“‘(\[])/gu
+/** A sentence end. CJK enders need no space after them; the others need one and a start of a sentence (a capital, a digit, a quote, or a letter of a script without capitals). */
+const BOUNDARY =
+  /(?:[.!?…؟۔।]+[»"”’')\]]*\s+(?=[\p{Lu}\p{Lo}\p{Nd}"«“‘(\[¿¡])|[。！？]+[」』»"”’')\]）]*\s*(?=\S))/gu
 
 const TITLES = new Set(['dr', 'mr', 'mrs', 'ms', 'prof', 'vs', 'г', 'ул'])
 
@@ -18,8 +20,8 @@ function isAbbreviation(before: string): boolean {
 function sentenceStarts(src: string): number[] {
   const starts: number[] = [0]
   for (const m of src.matchAll(BOUNDARY)) {
-    const punct = /^[.!?…]+/u.exec(m[0])![0]
-    // Only a lone dot can belong to an abbreviation; "!", "?", "…" and "..." end the sentence.
+    const punct = /^[.!?…؟۔।。！？]*/u.exec(m[0])![0]
+    // Only a lone ASCII dot can belong to an abbreviation; "!", "?", "…" and "..." end the sentence.
     if (punct === '.' && isAbbreviation(src.slice(0, m.index))) continue
     starts.push(m.index + m[0].length)
   }
@@ -49,18 +51,26 @@ export function countSentences(text: string): number {
 }
 
 /**
- * English under the hero: Russian lags behind English, so drop as many leading English sentences as the Russian head holds.
- * What remains is the hero's source plus whatever was said after it. Falls back to the last English sentence.
+ * The original under the hero: the translation lags behind it, so drop as many leading original sentences as the translation head holds.
+ * What remains is the hero's source plus whatever was said after it. Falls back to the last original sentence.
  */
-export function englishForHero(ru: string, en: string): string {
-  const src = en.trim()
+export function originalForHero(translation: string, original: string): string {
+  const src = original.trim()
   if (!src) return ''
-  const skip = countSentences(splitLast(ru).head)
-  if (skip === 0) return ru.trim() ? src : splitLast(src).last
+  const skip = countSentences(splitLast(translation).head)
+  if (skip === 0) return translation.trim() ? src : splitLast(src).last
   const starts = sentenceStarts(src)
   if (starts.length <= skip) return splitLast(src).last
   return src.slice(starts[skip]).trim()
 }
+
+/** What goes between two sentences: Chinese and Japanese put no space after a sentence. */
+export const sentenceGap = (before: string): string => (/[。！？][」』»"”’')\]）]*$/u.test(before) ? '' : ' ')
+
+const join = (a: string, b: string): string => (a && b ? `${a}${sentenceGap(a)}${b}` : a || b)
+
+/** The whole text of one part of `paragraphParts`. */
+export const paragraphText = ({ done, live }: { done: string; live: string }): string => join(done, live)
 
 /** A paragraph is closed once it reaches this many characters. */
 export const PARAGRAPH_CHARS = 160
@@ -70,7 +80,7 @@ export const PARAGRAPH_CHARS = 160
  * PARAGRAPH_CHARS. Earlier paragraphs stay the same while the text grows; only the last one changes.
  */
 export function paragraphs(text: string): string[] {
-  return paragraphParts(text).map(({ done, live }) => (done && live ? `${done} ${live}` : done || live))
+  return paragraphParts(text).map(paragraphText)
 }
 
 /**
@@ -85,7 +95,6 @@ export function paragraphParts(text: string): { done: string; live: string }[] {
   const out: { done: string; live: string }[] = []
   let done = ''
   let live = ''
-  const join = (a: string, b: string): string => (a ? `${a} ${b}` : b)
   for (let i = 0; i < starts.length; i++) {
     const sentence = src.slice(starts[i], starts[i + 1]).trim()
     if (i >= hero) live = join(live, sentence)

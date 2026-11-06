@@ -55,11 +55,14 @@ export interface SummaryRequest {
   code: string
   lines: string[]
   context: string
+  /** The language of the lines, and the language the notes are written in. */
+  callLanguage: string
+  language: string
   signal?: AbortSignal
   fetchImpl?: typeof fetch
 }
 
-export async function requestSummary({ code, lines, context, signal, fetchImpl }: SummaryRequest): Promise<SummaryResult> {
+export async function requestSummary({ code, lines, context, callLanguage, language, signal, fetchImpl }: SummaryRequest): Promise<SummaryResult> {
   if (!isHeaderSafe(code)) return { ok: false, message: BAD_CODE_MESSAGE, badCode: true }
   const doFetch: typeof fetch = fetchImpl ?? ((...a) => fetch(...a))
   const ctrl = new AbortController()
@@ -75,7 +78,7 @@ export async function requestSummary({ code, lines, context, signal, fetchImpl }
     const res = await doFetch('/api/summary', {
       method: 'POST',
       headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lines, context: context.slice(0, MAX_CONTEXT_CHARS) }),
+      body: JSON.stringify({ lines, context: context.slice(0, MAX_CONTEXT_CHARS), callLanguage, language }),
       signal: ctrl.signal
     })
     if (res.status === 401) return { ok: false, message: BAD_CODE_MESSAGE, badCode: true }
@@ -93,11 +96,23 @@ export async function requestSummary({ code, lines, context, signal, fetchImpl }
   }
 }
 
-const dateFmt = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long', year: 'numeric' })
+const dateFmts = {
+  ru: new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long', year: 'numeric' }),
+  en: new Intl.DateTimeFormat('en', { day: 'numeric', month: 'long', year: 'numeric' })
+}
 
-/** "6 ноября 2026 · 12 мин": the day the call began and how long it ran. */
-export function summaryMeta(startedAt: number, durationMs: number): string {
-  const date = dateFmt.format(startedAt).replace(/\s?г\.$/, '')
+/** "6 ноября 2026 · 12 мин": the day the call began and how long it ran. Any language but Russian gets English. */
+export function summaryMeta(startedAt: number, durationMs: number, language: string): string {
+  const ru = language === 'ru'
+  const date = ru ? dateFmts.ru.format(startedAt).replace(/\s?г\.$/, '') : dateFmts.en.format(startedAt)
   const minutes = Math.round(durationMs / 60_000)
-  return `${date} · ${durationMs < 60_000 ? 'меньше минуты' : `${minutes} мин`}`
+  const length = durationMs < 60_000 ? (ru ? 'меньше минуты' : 'less than a minute') : `${minutes} ${ru ? 'мин' : 'min'}`
+  return `${date} · ${length}`
+}
+
+/** The page UI is English, so every language but Russian gets English headings. */
+export function summaryLabels(language: string): { actions: string; overview: string; cut: string; ready: string } {
+  return language === 'ru'
+    ? { actions: 'Задачи', overview: 'Обзор', cut: 'Итоги только по последней части разговора.', ready: 'Итоги готовы' }
+    : { actions: 'Action items', overview: 'Overview', cut: 'This summary covers only the last part of the call.', ready: 'Summary ready' }
 }

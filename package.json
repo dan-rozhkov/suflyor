@@ -2,7 +2,7 @@
   "name": "suflyor",
   "version": "0.1.0",
   "private": true,
-  "description": "Suflyor: live EN to RU translation in the browser",
+  "description": "Suflyor: live speech translation in the browser",
   "scripts": {
     "dev": "npm run build && npx wrangler@4 dev",
     "build": "vite build",
