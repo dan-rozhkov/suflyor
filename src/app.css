@@ -446,13 +446,6 @@ button {
   font-weight: 700;
   text-align: left;
 }
-/* the credit is a link: same look as the button item, text centred in the 44px height */
-a.menu-item {
-  display: flex;
-  align-items: center;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-}
 
 /* idle section: a divider across the full width, the Start pill under it */
 .idle {
@@ -1036,16 +1029,44 @@ button:disabled > .haptic-tap {
   gap: var(--space-2);
   width: fit-content;
   min-height: 44px;
-  padding: 0 var(--space-4);
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--surface);
+  background: none;
   color: var(--text);
   font-size: var(--text-base);
-  font-weight: 800;
+  font-weight: 500;
 }
 .summary-btn:active {
-  background: var(--surface-active);
+  color: var(--text-muted);
+}
+/* Entrance: the block opens from zero height, so the text above it rises instead of jumping. */
+.summary-enter {
+  animation: summary-open var(--duration-layout) var(--ease);
+}
+@keyframes summary-open {
+  from {
+    margin-top: calc(-44px - var(--space-6));
+  }
+}
+.summary-enter .summary-btn {
+  animation: utt-in var(--duration-layout) var(--ease) 100ms backwards;
+}
+/* One sweep across the label. The text is transparent only inside the keyframes, so it stays readable without motion. */
+.summary-enter .summary-label {
+  background: linear-gradient(100deg, var(--text) 40%, var(--text-faint) 50%, var(--text) 60%) 100% 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: summary-shine 1s ease-in-out var(--duration-layout);
+}
+@keyframes summary-shine {
+  from {
+    background-position: 100% 0;
+    color: transparent;
+  }
+  to {
+    background-position: 0 0;
+    color: transparent;
+  }
 }
 /* Stays fully legible while the request runs. */
 .summary-btn:disabled {
@@ -1088,9 +1109,6 @@ button:disabled > .haptic-tap {
 .summary ul {
   margin: var(--space-2) 0 0;
   padding-left: 20px;
-}
-.summary strong {
-  font-weight: 800;
 }
 .summary li + li {
   margin-top: 6px;

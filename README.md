@@ -70,7 +70,7 @@ Every paragraph in the feed starts with the time it appeared (24-hour clock, to 
 
 ## Summary and transcript
 
-After Stop, a `Summarize` button appears under the text of the call. It writes Russian notes for that call: a title, the date and length, tasks with the people the call named, an overview, then one section for each topic. Numbers and dates are bold. The notes stay in the feed until the page closes. A call over about two hours is summarized from its latest part, and the notes say so.
+After Stop, a `Summarize` button appears under the text of the call. It writes Russian notes for that call: a title, the date and length, tasks with the people the call named, an overview, then one section for each topic. The notes stay in the feed until the page closes. A call over about two hours is summarized from its latest part, and the notes say so.
 
 The three-dot menu has `Download transcript` when no call is running. It saves the text of the feed as a `.md` file: chapter titles, the time and Russian text of each paragraph, and the English original as a quote. The notes from `Summarize` are not in the file. On a phone it opens the share sheet, where `Save to Files` keeps the file.
 

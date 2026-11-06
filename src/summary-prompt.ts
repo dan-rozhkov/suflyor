@@ -15,7 +15,6 @@ Structure of the notes:
 
 Rules:
 - Every bullet is ONE sentence, in the third person, in a flat list with no nesting. Make it concrete: names, numbers, decisions, reasons.
-- In bullets and tasks, wrap every number, date, day of the week, amount and deadline in double asterisks, for example **20 ноября** or **2 недели**. Mark nothing else this way.
 - Action items: only tasks that someone really agreed to do or was asked to do. Write each as an imperative task. The owner is the name only when the transcript or the context names that person; never guess an owner. With no named owner, leave the owner empty. If there are no action items, omit them.
 - Use only what the transcript says. Never invent dates, numbers, names or decisions.
 - The context is only for spelling names and understanding terms. It is never a source of facts about what was said on the call.
@@ -69,13 +68,6 @@ function clean(s: string, max: number): string {
   return s.replace(/\*+/g, '').replace(/\s+/g, ' ').trim().slice(0, max).trim()
 }
 
-/** Bullets and tasks keep paired `**` around numbers and dates; a pair broken by the cap loses its opening mark. */
-function cleanText(s: string): string {
-  const kept = s.replace(/\*{3,}/g, '**').replace(/(?<!\*)\*(?!\*)/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT).trim()
-  const parts = kept.split('**')
-  return parts.length % 2 ? kept : `${parts.slice(0, -1).join('**')}${parts[parts.length - 1]}`
-}
-
 export function parseSummary(text: string): Summary | null {
   let title = ''
   const actionItems: SummaryAction[] = []
@@ -96,12 +88,12 @@ export function parseSummary(text: string): Summary | null {
       } else if (label === 'ACTION') {
         const bar = rest.indexOf('|')
         const owner = bar < 0 ? '' : clean(rest.slice(0, bar), MAX_OWNER)
-        const task = cleanText(bar < 0 ? rest : rest.slice(bar + 1))
+        const task = clean(bar < 0 ? rest : rest.slice(bar + 1), MAX_TEXT)
         if (task && actionItems.length < MAX_ACTIONS) actionItems.push({ owner, task })
       } else if (label === 'OVERVIEW') {
         section = 'overview'
         topic = null
-        const first = cleanText(rest)
+        const first = clean(rest, MAX_TEXT)
         if (first && overview.length < MAX_OVERVIEW) overview.push(first)
       } else {
         section = 'topic'
@@ -113,7 +105,7 @@ export function parseSummary(text: string): Summary | null {
     }
     const b = BULLET.exec(line)
     if (!b) continue
-    const bullet = cleanText(b[1])
+    const bullet = clean(b[1], MAX_TEXT)
     if (!bullet) continue
     if (section === 'topic') {
       if (topic && topic.bullets.length < MAX_TOPIC_BULLETS) topic.bullets.push(bullet)

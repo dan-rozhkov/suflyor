@@ -12,14 +12,6 @@ export const SUMMARY_TIMEOUT_MS = 90_000
 
 export type SummaryResult = { ok: true; summary: Summary } | { ok: false; message: string; badCode?: true }
 
-/** Splits text on the model's `**` marks: odd pieces are the numbers and dates it marked. */
-export function boldParts(text: string): { text: string; bold: boolean }[] {
-  return text
-    .split('**')
-    .map((part, i) => ({ text: part, bold: i % 2 === 1 }))
-    .filter((p) => p.text)
-}
-
 /** The newest lines that fit the request limits. A single line over the limit keeps its last part. */
 export function summaryLines(lines: string[]): { lines: string[]; cut: boolean } {
   const kept: string[] = []

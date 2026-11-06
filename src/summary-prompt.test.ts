@@ -97,15 +97,10 @@ describe('parseSummary', () => {
     expect(parseSummary('- Кратко.')!.title).toBe('Итоги разговора')
   })
 
-  it('keeps paired bold marks in bullets and tasks, and drops the rest', () => {
+  it('drops every asterisk the model still writes', () => {
     const s = parseSummary('ACTION: **Анна** | Ответить до **пятницы**\nOVERVIEW:\n- Пробный период продлён на **2** недели\n- Звёздочка * и *курсив*\n- Сломанная **пара')!
-    expect(s.actionItems).toEqual([{ owner: 'Анна', task: 'Ответить до **пятницы**' }])
-    expect(s.overview).toEqual(['Пробный период продлён на **2** недели', 'Звёздочка и курсив', 'Сломанная пара'])
-  })
-
-  it('does not leave half a pair when the cap cuts it', () => {
-    const s = parseSummary(`OVERVIEW:\n- ${'я'.repeat(395)} **двадцать**`)!
-    expect(s.overview[0]).not.toContain('*')
+    expect(s.actionItems).toEqual([{ owner: 'Анна', task: 'Ответить до пятницы' }])
+    expect(s.overview).toEqual(['Пробный период продлён на 2 недели', 'Звёздочка и курсив', 'Сломанная пара'])
   })
 
   it('reads Russian dashes as bullets', () => {

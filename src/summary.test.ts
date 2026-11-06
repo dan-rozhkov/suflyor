@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MAX_SUMMARY_CHARS, MAX_SUMMARY_LINES } from './summary-limits'
 import { MAX_CONTEXT_CHARS } from './suggest-prompt'
 import {
-  boldParts,
   requestSummary,
   summaryLines,
   summaryMeta,
@@ -164,20 +163,5 @@ describe('summaryMeta', () => {
   })
   it('rounds up to one minute at the boundary', () => {
     expect(summaryMeta(at, 60_000)).toBe('6 ноября 2026 · 1 мин')
-  })
-})
-
-describe('boldParts', () => {
-  it('marks the text between pairs', () => {
-    expect(boldParts('До **20 ноября** и **2** дня')).toEqual([
-      { text: 'До ', bold: false },
-      { text: '20 ноября', bold: true },
-      { text: ' и ', bold: false },
-      { text: '2', bold: true },
-      { text: ' дня', bold: false }
-    ])
-  })
-  it('leaves plain text alone', () => {
-    expect(boldParts('Без чисел')).toEqual([{ text: 'Без чисел', bold: false }])
   })
 })

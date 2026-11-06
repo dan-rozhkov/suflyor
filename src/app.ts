@@ -15,7 +15,7 @@ import { addHaptic, addVibration } from './haptics'
 import { ICON_ALERT, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CLOSE, ICON_MORE, ICON_PAPERCLIP, ICON_RECORD, ICON_REFRESH, ICON_SPARK, ICON_STOP } from './icons'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 import { buildTranscript, saveMarkdown, transcriptFileName } from './transcript'
-import { boldParts, requestSummary, summaryLines, summaryMeta } from './summary'
+import { requestSummary, summaryLines, summaryMeta } from './summary'
 import type { Summary } from './types'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -34,7 +34,6 @@ const downloadEl = $<HTMLButtonElement>('download')
 const forgetEl = $<HTMLButtonElement>('forget')
 const moreEl = $<HTMLButtonElement>('more')
 const menuEl = $<HTMLElement>('menu')
-const creditEl = $<HTMLAnchorElement>('credit')
 const appEl = document.querySelector<HTMLElement>('.app')!
 const dockEl = $<HTMLElement>('dock')
 const stopEl = $<HTMLButtonElement>('stop')
@@ -249,16 +248,14 @@ contextFileEl.addEventListener('change', () => {
 /* menu */
 
 function setMenu(open: boolean): void {
-  // Leaving for the credit page mid-call would put the installed app in the background and stop the microphone.
-  creditEl.hidden = running
-  // The same reason: the file save can leave the page, and with nothing said there is nothing to save.
+  // The file save can leave the page, which would stop the microphone mid-call. With nothing said there is nothing to save.
   downloadEl.hidden = running || !order.some((u) => u.ru.trim() || u.en.trim())
   menuEl.hidden = !open
   moreEl.setAttribute('aria-expanded', String(open))
 }
 
 function menuItems(): HTMLElement[] {
-  return [downloadEl, forgetEl, creditEl].filter((el) => !el.hidden)
+  return [downloadEl, forgetEl].filter((el) => !el.hidden)
 }
 
 moreEl.addEventListener('click', () => {
@@ -280,12 +277,6 @@ document.addEventListener('keydown', (e) => {
     setMenu(false)
     moreEl.focus()
   }
-})
-
-// The link keeps its default action, so it opens the page and the menu closes behind it.
-creditEl.addEventListener('click', () => {
-  setMenu(false)
-  moreEl.focus()
 })
 
 const savedFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -1085,7 +1076,7 @@ function offerSummary(): void {
   if (!code || !summaryRun) return
   dropSummary()
   const el = document.createElement('section')
-  el.className = 'summary'
+  el.className = 'summary summary-enter'
   el.lang = 'ru'
   const btn = document.createElement('button')
   btn.type = 'button'
@@ -1096,6 +1087,8 @@ function offerSummary(): void {
   spark.setAttribute('aria-hidden', 'true')
   spark.innerHTML = ICON_SPARK
   const label = document.createElement('span')
+  label.className = 'summary-label'
+  label.addEventListener('animationend', () => el.classList.remove('summary-enter'), { once: true })
   btn.append(spark, label)
   addHaptic(btn)
   const status = document.createElement('span')
@@ -1117,19 +1110,18 @@ function offerSummary(): void {
   feedEl.append(el)
   summary = s
   if (stick) feedEl.scrollTop = feedEl.scrollHeight
+  followOpening(el)
 }
 
-/** Model text: `strong` only for its `**` marks, never parsed as HTML. */
-function appendMarked(el: HTMLElement, text: string): void {
-  for (const part of boldParts(text)) {
-    if (!part.bold) {
-      el.append(part.text)
-      continue
-    }
-    const b = document.createElement('strong')
-    b.textContent = part.text
-    el.append(b)
+/** The feed observer does not see the block open, so a pinned feed follows it frame by frame. */
+function followOpening(el: HTMLElement): void {
+  const opening = el.getAnimations()[0]
+  if (!opening) return
+  const step = (): void => {
+    if (pinned) feedEl.scrollTop = feedEl.scrollHeight
+    if (opening.playState === 'running') requestAnimationFrame(step)
   }
+  requestAnimationFrame(step)
 }
 
 function summaryList<T>(items: T[], render: (item: T, li: HTMLElement) => void): HTMLElement {
@@ -1165,17 +1157,12 @@ function paintSummary(s: SummaryBlock, data: Summary, cut: boolean): void {
   }
   if (data.actionItems.length) {
     const actions = summaryList(data.actionItems, (a, li) => {
-      if (a.owner) {
-        const who = document.createElement('strong')
-        who.textContent = `${a.owner}:`
-        li.append(who, ' ')
-      }
-      appendMarked(li, a.task)
+      li.textContent = a.owner ? `${a.owner}: ${a.task}` : a.task
     })
     out.push(summaryHeading('Задачи'), actions)
   }
-  if (data.overview.length) out.push(summaryHeading('Обзор'), summaryList(data.overview, (t, li) => appendMarked(li, t)))
-  for (const t of data.topics) out.push(summaryHeading(t.title), summaryList(t.bullets, (b, li) => appendMarked(li, b)))
+  if (data.overview.length) out.push(summaryHeading('Обзор'), summaryList(data.overview, (t, li) => (li.textContent = t)))
+  for (const t of data.topics) out.push(summaryHeading(t.title), summaryList(t.bullets, (b, li) => (li.textContent = b)))
   s.btn.remove()
   s.skeletons.remove()
   s.el.classList.add('summary-done')
