@@ -574,7 +574,6 @@ a.menu-item {
   --text-muted: #a2a2aa;
   --line: rgba(255, 255, 255, 0.12);
   --surface: #2a2a2e;
-  --green: #3ecf7a;
   position: relative;
   z-index: 1;
   flex: none;
@@ -691,12 +690,12 @@ a.menu-item {
   flex: none;
   display: grid;
   place-items: center;
-  color: var(--green);
+  color: var(--text-muted);
 }
 .more {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   height: 34px;
   margin: 0 0 0 var(--space-5);
   padding: 0;
@@ -707,8 +706,10 @@ a.menu-item {
   font-weight: 700;
 }
 .more svg {
-  width: 16px;
-  height: 16px;
+  /* block: an inline svg sits on the text baseline, above the centre of the label */
+  display: block;
+  width: 14px;
+  height: 14px;
   transition: rotate var(--duration-base) var(--ease);
 }
 .more[aria-expanded='true'] svg {

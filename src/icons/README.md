@@ -13,7 +13,7 @@ Icons marked `drawn` are ours, drawn in the same style. Most reuse a detail of a
 | Icon | Origin | Source |
 | --- | --- | --- |
 | `alert` | Streamline | `warning-diamond` |
-| `check` | drawn | tick of `check-square`, enlarged |
+| `check` | drawn | straight tick |
 | `chevron-down` | drawn | arrowhead of `download-tray`, enlarged |
 | `close` | drawn | cross of `block-2`, without the circle |
 | `more` | drawn | dots of `chat-bubble-typing-oval`, enlarged |
