@@ -69,14 +69,19 @@ export function addHaptic(button: HTMLButtonElement): void {
   })
 }
 
-/** Android and other browsers with vibrate: a short pulse on every enabled button. */
+/** A real switch needs no tap layer: with the attribute set, iOS plays the haptic on its own tap. */
+export function addSwitchHaptic(input: HTMLInputElement): void {
+  if (kind() === 'switch') input.setAttribute('switch', '')
+}
+
+/** Android and other browsers with vibrate: a short pulse on every enabled button and on the settings switch. */
 export function addVibration(): void {
   if (kind() !== 'vibrate') return
   document.addEventListener(
     'click',
     (e) => {
       const target = e.target
-      if (target instanceof Element && target.closest('button:not(:disabled)')) navigator.vibrate(10)
+      if (target instanceof Element && target.closest('button:not(:disabled), input[role="switch"]')) navigator.vibrate(10)
     },
     true
   )

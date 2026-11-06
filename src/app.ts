@@ -13,7 +13,7 @@ import { feedLanguage, loadSettings, saveSettings, withSource, withTarget, type 
 import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
 import { isInstalledApp, rootShortfall } from './viewport'
-import { addHaptic, addVibration } from './haptics'
+import { addHaptic, addSwitchHaptic, addVibration } from './haptics'
 import { ICON_ALERT, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CLOSE, ICON_MORE, ICON_PAPERCLIP, ICON_RECORD, ICON_REFRESH, ICON_SPARK, ICON_STOP } from './icons'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 import { buildTranscript, saveMarkdown, transcriptFileName } from './transcript'
@@ -1383,6 +1383,7 @@ fitInstalledApp()
 
 /* Dynamic buttons add their own tap layer when they are built. */
 document.querySelectorAll('button').forEach(addHaptic)
+addSwitchHaptic(settingsTranslateEl)
 addVibration()
 
 renderContextLink()

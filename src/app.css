@@ -335,16 +335,19 @@ button {
 }
 /* Hover and focus only deepen the field: no ring. The error rules below come later and win. */
 .field,
-.field-area {
+.field-area,
+.select {
   transition: background-color var(--duration-base) var(--ease);
 }
 .field:focus,
-.field-area:focus {
+.field-area:focus,
+.select:focus {
   background: var(--surface-active);
 }
 @media (hover: hover) {
   .field:hover,
-  .field-area:hover {
+  .field-area:hover,
+  .select:hover {
     background: var(--surface-active);
   }
 }
@@ -591,6 +594,8 @@ button {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 56%;
+  /* The select's background reaches past the chevron, and the chevron stays on the card's inner edge. */
+  margin-right: calc(-1 * var(--space-2));
   display: flex;
   align-items: center;
 }
@@ -598,7 +603,7 @@ button {
   min-width: 0;
   max-width: 100%;
   height: 48px;
-  padding: 0 28px 0 0;
+  padding: 0 36px 0 var(--space-3);
   border: 0;
   border-radius: 12px;
   background: transparent;
@@ -610,13 +615,9 @@ button {
   appearance: none;
   -webkit-appearance: none;
 }
-.select:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-}
 .select-chev {
   position: absolute;
-  right: 0;
+  right: var(--space-2);
   width: 24px;
   height: 24px;
   display: grid;
