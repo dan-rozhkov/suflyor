@@ -12,6 +12,7 @@ import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
 import { isInstalledApp, rootShortfall } from './viewport'
 import { addHaptic, addVibration } from './haptics'
+import { ICON_ALERT, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CLOSE, ICON_MORE, ICON_PAPERCLIP, ICON_RECORD, ICON_REFRESH, ICON_SPARK, ICON_STOP } from './icons'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -29,6 +30,7 @@ const diagEl = $<HTMLElement>('diag')
 const forgetEl = $<HTMLButtonElement>('forget')
 const moreEl = $<HTMLButtonElement>('more')
 const menuEl = $<HTMLElement>('menu')
+const creditEl = $<HTMLAnchorElement>('credit')
 const appEl = document.querySelector<HTMLElement>('.app')!
 const dockEl = $<HTMLElement>('dock')
 const stopEl = $<HTMLButtonElement>('stop')
@@ -55,18 +57,6 @@ const CODE_PLACEHOLDER = 'Access code'
 const MAX_FILE_BYTES = 1024 * 1024
 const NO_CONTEXT_NOTICE = 'Translation continues without the call notes.'
 const NO_LOCK_NOTICE = 'Keep the screen on: locking it stops the microphone.'
-
-const SVG_OPEN = '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" '
-const STOP_ICON = `${SVG_OPEN}data-pen-icon="Stop"><rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.75" /></svg>`
-const ALERT_ICON = `${SVG_OPEN}data-pen-icon="WarningCircle"><circle cx="8" cy="8" r="6" /><path d="M8 4.75v3.5M8 11v.01" /></svg>`
-const SPARK_ICON = `${SVG_OPEN}data-pen-icon="Sparkle"><path transform="translate(8 8) scale(1.07) translate(-8 -8)" d="M8 2.25Q9 7 13.75 8Q9 9 8 13.75Q7 9 2.25 8Q7 7 8 2.25Z" /></svg>`
-const CHECK_ICON = `${SVG_OPEN}data-pen-icon="Check"><path d="M2.75 8.5l3.25 3.25 7.25-7.5" /></svg>`
-const CHEVRON_ICON = `${SVG_OPEN}data-pen-icon="CaretDown"><path d="M4 6l4 4 4-4" /></svg>`
-const CLOSE_ICON = `${SVG_OPEN}data-pen-icon="X"><path d="M3.75 3.75l8.5 8.5M12.25 3.75l-8.5 8.5" /></svg>`
-const RECORD_ICON = `${SVG_OPEN}data-pen-icon="Record"><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="2.75" fill="currentColor" stroke="none" /></svg>`
-const DOTS_ICON = `${SVG_OPEN}data-pen-icon="DotsThree"><circle cx="3" cy="8" r="1.25" fill="currentColor" stroke="none" /><circle cx="8" cy="8" r="1.25" fill="currentColor" stroke="none" /><circle cx="13" cy="8" r="1.25" fill="currentColor" stroke="none" /></svg>`
-const CLIP_ICON = `${SVG_OPEN}data-pen-icon="Paperclip"><path d="M13.5 7.5l-5.6 5.6a3.2 3.2 0 0 1-4.5-4.5l6-6a2.1 2.1 0 0 1 3 3l-6 6a1 1 0 0 1-1.5-1.5l5.6-5.6" /></svg>`
-const REFRESH_ICON = `${SVG_OPEN}data-pen-icon="ArrowClockwise"><path d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M11.7 1.8v2.5H9.2" /></svg>`
 
 function readCode(): string {
   try {
@@ -124,13 +114,13 @@ let lastState: SessionState | undefined
 const stamps = new Map<string, number[]>()
 let chapters: Chapter[] = []
 
-stopEl.innerHTML = STOP_ICON
-sparkEl.innerHTML = SPARK_ICON
-repliesCloseEl.innerHTML = CLOSE_ICON
-toggleEl.insertAdjacentHTML('afterbegin', RECORD_ICON)
-moreEl.innerHTML = DOTS_ICON
-contextFileBtnEl.innerHTML = CLIP_ICON
-contextCloseEl.innerHTML = CLOSE_ICON
+stopEl.innerHTML = ICON_STOP
+sparkEl.innerHTML = ICON_SPARK
+repliesCloseEl.innerHTML = ICON_CLOSE
+toggleEl.insertAdjacentHTML('afterbegin', ICON_RECORD)
+moreEl.innerHTML = ICON_MORE
+contextFileBtnEl.innerHTML = ICON_PAPERCLIP
+contextCloseEl.innerHTML = ICON_CLOSE
 
 function logoIcon(): Node {
   return $<HTMLTemplateElement>('logo-icon').content.firstElementChild!.cloneNode(true)
@@ -255,6 +245,8 @@ contextFileEl.addEventListener('change', () => {
 /* menu */
 
 function setMenu(open: boolean): void {
+  // Leaving for the credit page mid-call would put the installed app in the background and stop the microphone.
+  creditEl.hidden = running
   menuEl.hidden = !open
   moreEl.setAttribute('aria-expanded', String(open))
 }
@@ -267,7 +259,19 @@ document.addEventListener('click', (e) => {
   if (!menuEl.hidden && !moreEl.contains(e.target as Node) && !menuEl.contains(e.target as Node)) setMenu(false)
 })
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || menuEl.hidden) return
+  if (menuEl.hidden) return
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    const onForget = document.activeElement === forgetEl
+    ;(onForget && !creditEl.hidden ? creditEl : forgetEl).focus()
+  } else if (e.key === 'Escape') {
+    setMenu(false)
+    moreEl.focus()
+  }
+})
+
+// The link keeps its default action, so it opens the page and the menu closes behind it.
+creditEl.addEventListener('click', () => {
   setMenu(false)
   moreEl.focus()
 })
@@ -607,7 +611,7 @@ function setToast(text: string, tone: 'red' | 'orange' | null): void {
   statusTextEl.textContent = text
   if (!tone) return
   statusIconEl.className = `toast-icon tone-${tone}`
-  statusIconEl.innerHTML = tone === 'red' ? ALERT_ICON : REFRESH_ICON
+  statusIconEl.innerHTML = tone === 'red' ? ICON_ALERT : ICON_REFRESH
 }
 
 let toastTimer: number | undefined
@@ -800,7 +804,7 @@ function paintReply(li: HTMLElement, text: string, live: boolean): void {
   if (copied === text && !check) {
     const c = document.createElement('span')
     c.className = 'opt-check'
-    c.innerHTML = CHECK_ICON
+    c.innerHTML = ICON_CHECK
     b.append(c)
   } else if (copied !== text && check) check.remove()
 }
@@ -913,7 +917,7 @@ function renderReplies(): void {
       more.className = 'more'
       moreLabel = document.createElement('span')
       const chev = document.createElement('span')
-      chev.innerHTML = CHEVRON_ICON
+      chev.innerHTML = ICON_CHEVRON_DOWN
       chev.setAttribute('aria-hidden', 'true')
       more.append(moreLabel, chev)
       addHaptic(more)
