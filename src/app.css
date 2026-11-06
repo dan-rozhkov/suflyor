@@ -1024,3 +1024,74 @@ a.menu-item {
 button:disabled > .haptic-tap {
   pointer-events: none;
 }
+
+/* summary: the button at the end of the call, then the notes that replace it */
+.summary {
+  flex: none;
+  margin-bottom: auto;
+}
+.summary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: 800;
+}
+.summary-btn:active {
+  background: var(--surface-active);
+}
+/* Stays fully legible while the request runs. */
+.summary-btn:disabled {
+  color: var(--text);
+}
+.summary .skeletons {
+  padding-inline: 0;
+}
+.summary-done {
+  padding-top: var(--space-5);
+  box-shadow: inset 0 1px 0 var(--line);
+  font-size: var(--text-base);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.summary-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 800;
+  line-height: 1.3;
+}
+.summary-title:focus {
+  outline: none;
+}
+.summary p {
+  margin: 0;
+}
+.summary-meta {
+  margin-top: 2px !important;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.summary h3 {
+  margin: var(--space-5) 0 0;
+  font-size: var(--text-base);
+  font-weight: 800;
+  line-height: 1.3;
+}
+.summary ul {
+  margin: var(--space-2) 0 0;
+  padding-left: 20px;
+}
+.summary strong {
+  font-weight: 800;
+}
+.summary li + li {
+  margin-top: 6px;
+}

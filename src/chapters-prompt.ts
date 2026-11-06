@@ -33,12 +33,12 @@ export function buildChapterMessages(paragraphs: string[], openTitle: string): C
 
 const WRAP = /^["'«»“”„‘’]+|["'«»“”„‘’]+$/g
 
-function cleanTitle(s: string): string {
+export function cleanTitle(s: string, max = MAX_CHAPTER_TITLE_CHARS): string {
   let t = s.replace(/\*+/g, '')
   for (let i = 0; i < 3; i++) {
     t = t.trim().replace(WRAP, '').trim().replace(/\.+$/, '')
   }
-  return t.replace(/\s+/g, ' ').trim().slice(0, MAX_CHAPTER_TITLE_CHARS).trim()
+  return t.replace(/\s+/g, ' ').trim().slice(0, max).trim()
 }
 
 export function parseChapters(text: string, count: number): { start: number; title: string }[] {

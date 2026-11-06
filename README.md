@@ -7,6 +7,7 @@ A web page that listens to the room through the microphone and shows live Englis
 - The page records the microphone and sends the audio straight to [Soniox](https://soniox.com), which streams recognition and translation back.
 - A small Cloudflare Worker (`src/worker.ts`) holds the Soniox API key. The page sends the access code to the Worker and gets a short-lived Soniox key. It lasts 60 seconds, which is enough to open the stream.
 - Reply suggestions go through the same Worker. The page sends the last lines of English text and the call notes to `POST /api/suggest`. The Worker adds the OpenCode key and streams the answer back. The key never reaches the page.
+- Call summaries go through the same Worker. After a call, a tap on `Summarize` sends the English text of that call and the call notes to `POST /api/summary`. The Worker asks OpenCode for the notes and returns them to the page.
 - Chapters go through the same Worker. While a call runs, the page sends the Russian text of the open chapter to `POST /api/chapters`, and the Worker asks OpenCode for chapter titles. Only that text is sent, never the call notes.
 - There is no service worker. The app needs the network, and a cache would keep old versions on the phone.
 
@@ -66,6 +67,12 @@ While a call runs, the round sparkle button in the dark bar asks for replies. It
 ## Chapters
 
 Every paragraph in the feed starts with the time it appeared (24-hour clock, to the second). During a call the page also splits the talk into chapters with short Russian titles. Small dashes show at the right edge of the feed, one per chapter. Tap them on a phone, or hover on a computer, to open the list. Tap a chapter to scroll to it. `Latest` scrolls back to the end of the feed. A chapter shorter than about 20 seconds of speech is joined to the one before it, except the first chapter of a call. Closed chapters do not change. Only the last chapter is sent again as the call goes on, so a long call costs the same for each request. If a request fails, the page stays quiet and tries again later.
+
+## Summary and transcript
+
+After Stop, a `Summarize` button appears under the text of the call. It writes Russian notes for that call: a title, the date and length, tasks with the people the call named, an overview, then one section for each topic. Numbers and dates are bold. The notes stay in the feed until the page closes. A call over about two hours is summarized from its latest part, and the notes say so.
+
+The three-dot menu has `Download transcript` when no call is running. It saves the text of the feed as a `.md` file: chapter titles, the time and Russian text of each paragraph, and the English original as a quote. The notes from `Summarize` are not in the file. On a phone it opens the share sheet, where `Save to Files` keeps the file.
 
 ## Call notes
 

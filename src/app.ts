@@ -14,6 +14,9 @@ import { isInstalledApp, rootShortfall } from './viewport'
 import { addHaptic, addVibration } from './haptics'
 import { ICON_ALERT, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CLOSE, ICON_MORE, ICON_PAPERCLIP, ICON_RECORD, ICON_REFRESH, ICON_SPARK, ICON_STOP } from './icons'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
+import { buildTranscript, saveMarkdown, transcriptFileName } from './transcript'
+import { boldParts, requestSummary, summaryLines, summaryMeta } from './summary'
+import type { Summary } from './types'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const formEl = $<HTMLFormElement>('code-form')
@@ -27,6 +30,7 @@ const statusEl = $<HTMLElement>('status')
 const statusIconEl = $<HTMLElement>('status-icon')
 const statusTextEl = $<HTMLElement>('status-text')
 const diagEl = $<HTMLElement>('diag')
+const downloadEl = $<HTMLButtonElement>('download')
 const forgetEl = $<HTMLButtonElement>('forget')
 const moreEl = $<HTMLButtonElement>('more')
 const menuEl = $<HTMLElement>('menu')
@@ -247,13 +251,19 @@ contextFileEl.addEventListener('change', () => {
 function setMenu(open: boolean): void {
   // Leaving for the credit page mid-call would put the installed app in the background and stop the microphone.
   creditEl.hidden = running
+  // The same reason: the file save can leave the page, and with nothing said there is nothing to save.
+  downloadEl.hidden = running || !order.some((u) => u.ru.trim() || u.en.trim())
   menuEl.hidden = !open
   moreEl.setAttribute('aria-expanded', String(open))
 }
 
+function menuItems(): HTMLElement[] {
+  return [downloadEl, forgetEl, creditEl].filter((el) => !el.hidden)
+}
+
 moreEl.addEventListener('click', () => {
   setMenu(menuEl.hasAttribute('hidden'))
-  if (!menuEl.hidden) forgetEl.focus()
+  if (!menuEl.hidden) menuItems()[0]?.focus()
 })
 document.addEventListener('click', (e) => {
   if (!menuEl.hidden && !moreEl.contains(e.target as Node) && !menuEl.contains(e.target as Node)) setMenu(false)
@@ -262,8 +272,10 @@ document.addEventListener('keydown', (e) => {
   if (menuEl.hidden) return
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
-    const onForget = document.activeElement === forgetEl
-    ;(onForget && !creditEl.hidden ? creditEl : forgetEl).focus()
+    const items = menuItems()
+    const at = items.indexOf(document.activeElement as HTMLElement)
+    const step = e.key === 'ArrowDown' ? 1 : -1
+    items[at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length]?.focus()
   } else if (e.key === 'Escape') {
     setMenu(false)
     moreEl.focus()
@@ -272,6 +284,23 @@ document.addEventListener('keydown', (e) => {
 
 // The link keeps its default action, so it opens the page and the menu closes behind it.
 creditEl.addEventListener('click', () => {
+  setMenu(false)
+  moreEl.focus()
+})
+
+const savedFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
+downloadEl.addEventListener('click', () => {
+  const now = new Date()
+  const text = buildTranscript({
+    utterances: order,
+    stamps,
+    chapters,
+    clock: (ms) => clockFmt.format(ms),
+    savedAt: savedFmt.format(now)
+  })
+  // Called inside the tap, before anything is awaited: iOS opens the share sheet only from a gesture.
+  saveMarkdown(text, transcriptFileName(now), isInstalledApp() ? 'share-only' : hoverNone.matches ? 'share' : 'link').catch(() => showTransientError('Could not save the transcript.'))
   setMenu(false)
   moreEl.focus()
 })
@@ -380,7 +409,8 @@ function renderUtterances(list: Utterance[]): void {
     if (!row) {
       row = document.createElement('article')
       rows.set(u.id, row)
-      feedEl.append(row)
+      // Final text can arrive around the stop: it belongs above the summary button.
+      feedEl.insertBefore(row, summary?.el ?? null)
     }
     paintRow(row, u, u === latest)
   }
@@ -413,6 +443,8 @@ if (typeof ResizeObserver !== 'undefined') {
 }
 
 function clearFeed(): void {
+  dropSummary()
+  summaryRun = null
   chapterer.reset()
   chapters = []
   stamps.clear()
@@ -489,7 +521,10 @@ function paragraphEl(c: Chapter): HTMLElement | null {
 
 function jumpTo(c: Chapter): void {
   const el = paragraphEl(c)
-  if (!el) return
+  if (el) jumpToEl(el)
+}
+
+function jumpToEl(el: HTMLElement): void {
   jumpUntil = performance.now() + JUMP_MS
   pinned = false
   // A jump can end at the bottom, or not scroll at all: no scroll event would say so.
@@ -715,7 +750,10 @@ function onState(s: SessionState): void {
   waveEl.classList.toggle('wave-idle', s.phase !== 'listening')
   toggleEl.disabled = !code
   stopEl.disabled = s.phase === 'stopping'
-  if (!running && wasRunning && s.message !== BAD_CODE_MESSAGE) chapterer.flush()
+  if (!running && wasRunning && s.message !== BAD_CODE_MESSAGE) {
+    chapterer.flush()
+    offerSummary()
+  }
   renderSuggestButton()
   if (running && !wasRunning) stopEl.focus()
   if (!running && wasRunning && darkHadFocus) toggleEl.focus()
@@ -962,18 +1000,23 @@ function resetReplies(): void {
   if (hadFocus) suggestEl.focus()
 }
 
+/** The Worker refused the code: stop, forget everything and ask for it again. */
+function rejectCode(): void {
+  if (running) session.stop()
+  resetReplies()
+  clearFeed()
+  code = ''
+  writeCode('')
+  setToast('', null)
+  showForm(BAD_CODE_MESSAGE)
+}
+
 function onSuggestUpdate(u: SuggestUpdate): void {
   if (u.status === 'error') {
     replyState = null
     renderReplies()
     if (u.badCode) {
-      if (running) session.stop()
-      resetReplies()
-      clearFeed()
-      code = ''
-      writeCode('')
-      setToast('', null)
-      showForm(BAD_CODE_MESSAGE)
+      rejectCode()
       return
     }
     showTransientError(u.message ?? 'Could not get replies. Try again.')
@@ -998,6 +1041,180 @@ repliesCloseEl.addEventListener('click', () => {
   resetReplies()
   suggestEl.focus()
 })
+
+/* summary */
+
+interface SummaryBlock {
+  el: HTMLElement
+  btn: HTMLButtonElement
+  spark: HTMLElement
+  label: HTMLElement
+  status: HTMLElement
+  skeletons: HTMLElement
+  runStart: number
+  startedAt: number
+  durationMs: number
+  ctrl: AbortController | null
+  done: boolean
+}
+
+/** The block at the end of the feed for the run that just ended; null once the next run starts or the code is forgotten. */
+let summary: SummaryBlock | null = null
+/** The call the button covers. It outlives a Start that heard nothing, so that Start does not lose the call before it. */
+let summaryRun: Pick<SummaryBlock, 'runStart' | 'startedAt' | 'durationMs'> | null = null
+
+function dropSummary(): void {
+  const s = summary
+  summary = null
+  s?.ctrl?.abort()
+  s?.el.remove()
+}
+
+function setSummaryBusy(s: SummaryBlock, busy: boolean): void {
+  s.btn.disabled = busy
+  s.spark.classList.toggle('spark-live', busy)
+  s.label.textContent = busy ? 'Summarizing' : 'Summarize'
+  s.skeletons.hidden = !busy
+  // The feed observer watches the feed box, not its content.
+  if (pinned) feedEl.scrollTop = feedEl.scrollHeight
+}
+
+/** After a run with text: a button at the end of the feed. The summary costs a call, so it waits for a tap. */
+function offerSummary(): void {
+  if (order.slice(runStart).some((u) => u.en.trim())) summaryRun = { runStart, startedAt, durationMs: Date.now() - startedAt }
+  if (!code || !summaryRun) return
+  dropSummary()
+  const el = document.createElement('section')
+  el.className = 'summary'
+  el.lang = 'ru'
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'summary-btn'
+  btn.lang = 'en'
+  const spark = document.createElement('span')
+  spark.className = 'spark'
+  spark.setAttribute('aria-hidden', 'true')
+  spark.innerHTML = ICON_SPARK
+  const label = document.createElement('span')
+  btn.append(spark, label)
+  addHaptic(btn)
+  const status = document.createElement('span')
+  status.className = 'sr-only'
+  status.setAttribute('role', 'status')
+  const skeletons = document.createElement('div')
+  skeletons.className = 'skeletons'
+  skeletons.setAttribute('aria-hidden', 'true')
+  for (const cls of ['skeleton', 'skeleton skeleton-short']) {
+    const bar = document.createElement('span')
+    bar.className = cls
+    skeletons.append(bar)
+  }
+  el.append(btn, skeletons, status)
+  const s: SummaryBlock = { el, btn, spark, label, status, skeletons, ...summaryRun, ctrl: null, done: false }
+  setSummaryBusy(s, false)
+  btn.addEventListener('click', () => void runSummary(s))
+  const stick = pinned
+  feedEl.append(el)
+  summary = s
+  if (stick) feedEl.scrollTop = feedEl.scrollHeight
+}
+
+/** Model text: `strong` only for its `**` marks, never parsed as HTML. */
+function appendMarked(el: HTMLElement, text: string): void {
+  for (const part of boldParts(text)) {
+    if (!part.bold) {
+      el.append(part.text)
+      continue
+    }
+    const b = document.createElement('strong')
+    b.textContent = part.text
+    el.append(b)
+  }
+}
+
+function summaryList<T>(items: T[], render: (item: T, li: HTMLElement) => void): HTMLElement {
+  const ul = document.createElement('ul')
+  for (const item of items) {
+    const li = document.createElement('li')
+    render(item, li)
+    ul.append(li)
+  }
+  return ul
+}
+
+function summaryHeading(text: string): HTMLElement {
+  const h = document.createElement('h3')
+  h.textContent = text
+  return h
+}
+
+function paintSummary(s: SummaryBlock, data: Summary, cut: boolean): void {
+  const title = document.createElement('h2')
+  title.className = 'summary-title'
+  title.tabIndex = -1
+  title.textContent = data.title
+  const meta = document.createElement('p')
+  meta.className = 'summary-meta'
+  meta.textContent = summaryMeta(s.startedAt, s.durationMs)
+  const out: HTMLElement[] = [title, meta]
+  if (cut) {
+    const note = document.createElement('p')
+    note.className = 'summary-meta'
+    note.textContent = 'Итоги только по последней части разговора.'
+    out.push(note)
+  }
+  if (data.actionItems.length) {
+    const actions = summaryList(data.actionItems, (a, li) => {
+      if (a.owner) {
+        const who = document.createElement('strong')
+        who.textContent = `${a.owner}:`
+        li.append(who, ' ')
+      }
+      appendMarked(li, a.task)
+    })
+    out.push(summaryHeading('Задачи'), actions)
+  }
+  if (data.overview.length) out.push(summaryHeading('Обзор'), summaryList(data.overview, (t, li) => appendMarked(li, t)))
+  for (const t of data.topics) out.push(summaryHeading(t.title), summaryList(t.bullets, (b, li) => appendMarked(li, b)))
+  s.btn.remove()
+  s.skeletons.remove()
+  s.el.classList.add('summary-done')
+  s.el.append(...out)
+  s.status.textContent = 'Итоги готовы'
+  jumpToEl(s.el)
+  title.focus({ preventScroll: true })
+}
+
+async function runSummary(s: SummaryBlock): Promise<void> {
+  // A second tap must not start another paid call.
+  if (summary !== s || s.ctrl || s.done) return
+  const { lines, cut } = summaryLines(order.slice(s.runStart).map((u) => u.en.trim()).filter(Boolean))
+  const ctrl = new AbortController()
+  s.ctrl = ctrl
+  setSummaryBusy(s, true)
+  const r = await requestSummary({ code, lines, context: loadContext(), signal: ctrl.signal })
+  // Forget code or the next Start may have removed the block while the request ran.
+  if (summary !== s) return
+  s.ctrl = null
+  if (r.ok) {
+    s.done = true
+    summaryRun = null
+    paintSummary(s, r.summary, cut)
+    return
+  }
+  setSummaryBusy(s, false)
+  if (r.badCode) {
+    // The call is over and its text stays, so a new code can still summarize or save it.
+    code = ''
+    writeCode('')
+    setToast('', null)
+    showForm(BAD_CODE_MESSAGE)
+    return
+  }
+  // A disabled button drops focus: give it back so the keyboard user can try again.
+  if (document.activeElement === document.body) s.btn.focus({ preventScroll: true })
+  showTransientError(r.message)
+}
 
 const session = createSession({
   getCode: () => code,
@@ -1037,6 +1254,14 @@ toggleEl.addEventListener('click', () => {
   sentSamples = 0
   peak = 0
   notice = ''
+  // An unused or pending summary belongs to the run that is over; a finished one stays as history.
+  if (summary?.done) summary = null
+  else dropSummary()
+  // A summary read from its top left the feed unpinned, and the new text would land out of sight.
+  jumpUntil = 0
+  window.clearTimeout(jumpTimer)
+  feedEl.scrollTop = feedEl.scrollHeight
+  pinned = true
   runStart = order.length
   chapterer.startRun()
   renderDiag()

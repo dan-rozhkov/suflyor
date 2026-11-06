@@ -82,7 +82,7 @@ interface Answer {
 }
 
 /** A 503 from anything else, such as the platform, is a passing failure. */
-async function isMissingKey(res: Response): Promise<boolean> {
+export async function isMissingKey(res: Response): Promise<boolean> {
   if (res.status !== 503) return false
   try {
     return ((await res.clone().json()) as { error?: unknown }).error === 'no-suggest-key'

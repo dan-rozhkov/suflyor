@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker, { type Env } from './worker'
 import { SONIOX_TEMP_KEY_URL } from './soniox-url'
 import { OPENCODE_CHAT_URL } from './opencode-url'
+import { MAX_CONTEXT_CHARS } from './suggest-prompt'
+import { MAX_SUMMARY_BODY_BYTES, MAX_SUMMARY_CHARS, MAX_SUMMARY_LINES } from './summary-limits'
 
 const env: Env = { SONIOX_API_KEY: 'master-key-xyz', ACCESS_CODE: 'fictional-code-0123456789abcdef' }
 const call = (init: RequestInit & { path?: string } = {}, e: Env = env): Promise<Response> =>
@@ -388,5 +390,157 @@ describe('worker /api/chapters', () => {
     expect(body.max_tokens).toBe(700)
     expect(body.temperature).toBe(0.7)
     expect(Object.keys(body).sort()).toEqual(['max_tokens', 'messages', 'model', 'reasoning_effort', 'stream', 'temperature'])
+  })
+})
+
+describe('worker /api/summary', () => {
+  const senv: Env = { ...env, OPENCODE_API_KEY: 'oc-key-xyz' }
+  const auth = { Authorization: 'Bearer fictional-code-0123456789abcdef' }
+  const post = (body: unknown, e: Env = senv, headers: Record<string, string> = auth): Promise<Response> =>
+    call({ path: '/api/summary', headers, body: typeof body === 'string' ? body : JSON.stringify(body) }, e)
+  const NOTES = 'TITLE: Запуск пилота\nACTION: Анна | Отправить договор\nOVERVIEW:\n- Команда обсудила пилот.\nTOPIC: Сроки пилота\n- Старт в мае.'
+  const answer = (content: unknown = NOTES): Response =>
+    new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })
+  const sent = (f: ReturnType<typeof vi.fn>, n: number): Record<string, unknown> =>
+    JSON.parse((f.mock.calls[n] as unknown as [string, RequestInit])[1].body as string)
+
+  it('gives 405 for the wrong method', async () => {
+    const res = await call({ path: '/api/summary', method: 'GET' }, senv)
+    expect(res.status).toBe(405)
+    expect(res.headers.get('Allow')).toBe('POST')
+  })
+
+  it('refuses a missing or wrong code without calling upstream', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    for (const h of [{} as Record<string, string>, { Authorization: 'Bearer nope' }]) {
+      const res = await post({ lines: ['a'] }, senv, h)
+      expect(res.status).toBe(401)
+      expect(await res.json()).toEqual({ error: 'bad-code' })
+    }
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 503 when the OpenCode key is not set', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const res = await post({ lines: ['a'] }, env)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'no-suggest-key' })
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 413 for a declared or real size over the summary limit', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const real = await post({ lines: ['x'.repeat(MAX_SUMMARY_BODY_BYTES + 1)] })
+    expect(real.status).toBe(413)
+    const declared = await post({ lines: ['a'] }, senv, { ...auth, 'Content-Length': String(MAX_SUMMARY_BODY_BYTES + 1) })
+    expect(declared.status).toBe(413)
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('accepts a body bigger than the 200 KB limit of the other routes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => answer()))
+    const body = JSON.stringify({ lines: ['я'.repeat(115_000)] })
+    expect(new TextEncoder().encode(body).length).toBeGreaterThan(200 * 1024)
+    expect(new TextEncoder().encode(body).length).toBeLessThan(MAX_SUMMARY_BODY_BYTES)
+    const res = await post(body)
+    expect(res.status).toBe(200)
+  })
+
+  it('gives 400 for bad bodies without calling upstream', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const bad: unknown[] = [
+      'not json', 'null', {}, { lines: 'a' }, { lines: [1] }, { lines: [] },
+      { lines: Array.from({ length: MAX_SUMMARY_LINES + 1 }, () => 'a') },
+      { lines: ['я'.repeat(MAX_SUMMARY_CHARS), 'я'] },
+      { lines: ['a'], context: 5 },
+      { lines: ['a'], context: 'c'.repeat(MAX_CONTEXT_CHARS + 1) }
+    ]
+    for (const b of bad) {
+      const res = await post(b)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'bad-request' })
+    }
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('accepts the limits exactly', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => answer()))
+    const a = await post({ lines: Array.from({ length: MAX_SUMMARY_LINES }, () => 'a'), context: 'c'.repeat(MAX_CONTEXT_CHARS) })
+    expect(a.status).toBe(200)
+    const b = await post({ lines: ['я'.repeat(MAX_SUMMARY_CHARS)] })
+    expect(b.status).toBe(200)
+  })
+
+  it('returns the parsed summary with a non-streaming request that carries the key only to OpenCode', async () => {
+    const f = vi.fn(async () => answer())
+    vi.stubGlobal('fetch', f)
+    const res = await post({ lines: ['We ship in May.', 'Okay.'], context: 'Acme pilot', model: 'evil', stream: true })
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(JSON.parse(text)).toEqual({
+      summary: {
+        title: 'Запуск пилота',
+        actionItems: [{ owner: 'Анна', task: 'Отправить договор' }],
+        overview: ['Команда обсудила пилот.'],
+        topics: [{ title: 'Сроки пилота', bullets: ['Старт в мае.'] }]
+      }
+    })
+    expect(text).not.toContain('oc-key-xyz')
+    expect(f).toHaveBeenCalledTimes(1)
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe(OPENCODE_CHAT_URL)
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer oc-key-xyz')
+    const body = sent(f, 0)
+    expect(body.model).toBe('deepseek-v4.1-flash')
+    expect(body.stream).toBe(false)
+    expect(body.max_tokens).toBe(8000)
+    expect(body.temperature).toBe(0.2)
+    expect(body.reasoning_effort).toBe('none')
+    expect(JSON.stringify(body.messages)).toContain('We ship in May.')
+    expect(JSON.stringify(body.messages)).toContain('Acme pilot')
+  })
+
+  it('retries once without reasoning_effort after a 400', async () => {
+    const f = vi.fn().mockResolvedValueOnce(new Response('bad', { status: 400 })).mockResolvedValueOnce(answer())
+    vi.stubGlobal('fetch', f)
+    const res = await post({ lines: ['a'] })
+    expect(res.status).toBe(200)
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(sent(f, 0).reasoning_effort).toBe('none')
+    expect('reasoning_effort' in sent(f, 1)).toBe(false)
+    expect(sent(f, 1).stream).toBe(false)
+    expect(sent(f, 1).max_tokens).toBe(8000)
+  })
+
+  it('gives 502 for upstream errors, bad JSON, no content or unusable text', async () => {
+    const cases: Response[] = [
+      new Response('boom oc-key-xyz', { status: 500 }),
+      new Response('boom', { status: 400 }),
+      new Response('not json', { status: 200 }),
+      new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+      answer(''),
+      answer(null),
+      answer('Sorry, I cannot do that.'),
+      answer('TITLE: Только заголовок')
+    ]
+    for (const r of cases) {
+      vi.stubGlobal('fetch', vi.fn(async () => r.clone()))
+      const res = await post({ lines: ['a'] })
+      expect(res.status).toBe(502)
+      const text = await res.text()
+      expect(JSON.parse(text)).toEqual({ error: 'upstream' })
+      expect(text).not.toContain('oc-key-xyz')
+    }
+  })
+
+  it('gives 502 when the upstream fetch throws', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('boom oc-key-xyz') }))
+    const res = await post({ lines: ['a'] })
+    expect(res.status).toBe(502)
+    expect(await res.text()).not.toContain('oc-key-xyz')
   })
 })

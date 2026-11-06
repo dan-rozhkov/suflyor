@@ -1,6 +1,8 @@
 import { SONIOX_TEMP_KEY_URL } from './soniox-url'
 import { OPENCODE_CHAT_URL } from './opencode-url'
-import { buildMessages, type ChatMessage } from './suggest-prompt'
+import { buildMessages, MAX_CONTEXT_CHARS, type ChatMessage } from './suggest-prompt'
+import { buildSummaryMessages, parseSummary } from './summary-prompt'
+import { MAX_SUMMARY_BODY_BYTES, MAX_SUMMARY_CHARS, MAX_SUMMARY_LINES } from './summary-limits'
 import { buildChapterMessages, parseChapters } from './chapters-prompt'
 import { MAX_CHAPTER_PARAGRAPHS, MAX_CHAPTER_PARAGRAPH_CHARS, MAX_CHAPTER_TITLE_CHARS, MAX_CHAPTER_WINDOW_CHARS } from './chapters-limits'
 
@@ -74,6 +76,7 @@ interface CallOptions {
 
 const SUGGEST_CALL: CallOptions = { stream: true, maxTokens: 700, temperature: 0.7 }
 const CHAPTERS_CALL: CallOptions = { stream: false, maxTokens: 400, temperature: 0.2 }
+const SUMMARY_CALL: CallOptions = { stream: false, maxTokens: 8000, temperature: 0.2 }
 
 function callOpenCode(key: string, messages: ChatMessage[], opts: CallOptions, withReasoning: boolean): Promise<Response> {
   return fetch(OPENCODE_CHAT_URL, {
@@ -100,16 +103,28 @@ async function askOpenCode(key: string, messages: ChatMessage[], opts: CallOptio
   return res
 }
 
+/** The text of a whole answer, or null when there is none. */
+async function askForText(key: string, messages: ChatMessage[], opts: CallOptions): Promise<string | null> {
+  const res = await askOpenCode(key, messages, opts)
+  if (!res.ok) {
+    void res.body?.cancel()
+    return null
+  }
+  const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
+  const content = data?.choices?.[0]?.message?.content
+  return typeof content === 'string' && content ? content : null
+}
+
 /** The checks every model route shares. Gives the OpenCode key and the raw body, or the refusal. */
-async function readModelRequest(request: Request, env: Env): Promise<{ key: string; raw: string } | Response> {
+async function readModelRequest(request: Request, env: Env, maxBytes = MAX_BODY_BYTES): Promise<{ key: string; raw: string } | Response> {
   if (request.method !== 'POST') return json({ error: 'method-not-allowed' }, 405, { Allow: 'POST' })
   if (!(await codeMatches(bearer(request), env.ACCESS_CODE))) return json({ error: 'bad-code' }, 401)
   const key = env.OPENCODE_API_KEY
   if (!key) return json({ error: 'no-suggest-key' }, 503)
   const declared = Number(request.headers.get('Content-Length'))
-  if (declared > MAX_BODY_BYTES) return json({ error: 'too-large' }, 413)
+  if (declared > maxBytes) return json({ error: 'too-large' }, 413)
   const raw = await request.text()
-  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return json({ error: 'too-large' }, 413)
+  if (new TextEncoder().encode(raw).length > maxBytes) return json({ error: 'too-large' }, 413)
   return { key, raw }
 }
 
@@ -165,17 +180,41 @@ async function handleChapters(request: Request, env: Env): Promise<Response> {
   }
   const messages = buildChapterMessages(paragraphs, openTitle)
   try {
-    const res = await askOpenCode(key, messages, CHAPTERS_CALL)
-    if (!res.ok) {
-      void res.body?.cancel()
-      return json({ error: 'upstream' }, 502)
-    }
-    const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
-    const content = data?.choices?.[0]?.message?.content
-    if (typeof content !== 'string' || !content) return json({ error: 'upstream' }, 502)
+    const content = await askForText(key, messages, CHAPTERS_CALL)
+    if (!content) return json({ error: 'upstream' }, 502)
     const chapters = parseChapters(content, paragraphs.length)
     if (!chapters.length) return json({ error: 'upstream' }, 502)
     return json({ chapters }, 200)
+  } catch {
+    return json({ error: 'upstream' }, 502)
+  }
+}
+
+async function handleSummary(request: Request, env: Env): Promise<Response> {
+  const read = await readModelRequest(request, env, MAX_SUMMARY_BODY_BYTES)
+  if (read instanceof Response) return read
+  const { key, raw } = read
+  let lines: string[]
+  let context = ''
+  try {
+    const body = JSON.parse(raw) as { lines?: unknown; context?: unknown }
+    if (!body || !Array.isArray(body.lines) || !body.lines.every((l) => typeof l === 'string')) throw new Error('lines')
+    lines = body.lines as string[]
+    if (body.context !== undefined && body.context !== null) {
+      if (typeof body.context !== 'string' || body.context.length > MAX_CONTEXT_CHARS) throw new Error('context')
+      context = body.context
+    }
+    if (!lines.length || lines.length > MAX_SUMMARY_LINES || lines.join('').length > MAX_SUMMARY_CHARS) throw new Error('limits')
+  } catch {
+    return json({ error: 'bad-request' }, 400)
+  }
+  const messages = buildSummaryMessages(lines, context)
+  try {
+    const content = await askForText(key, messages, SUMMARY_CALL)
+    if (!content) return json({ error: 'upstream' }, 502)
+    const summary = parseSummary(content)
+    if (!summary) return json({ error: 'upstream' }, 502)
+    return json({ summary }, 200)
   } catch {
     return json({ error: 'upstream' }, 502)
   }
@@ -187,6 +226,7 @@ export default {
     if (pathname === '/api/token') return handleToken(request, env)
     if (pathname === '/api/suggest') return handleSuggest(request, env)
     if (pathname === '/api/chapters') return handleChapters(request, env)
+    if (pathname === '/api/summary') return handleSummary(request, env)
     return json({ error: 'not-found' }, 404)
   }
 }
