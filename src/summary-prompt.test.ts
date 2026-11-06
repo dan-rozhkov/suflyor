@@ -130,6 +130,12 @@ describe('parseSummary', () => {
     expect(s.overview).toEqual(['Пробный период продлён на 2 недели', 'Звёздочка и курсив', 'Сломанная пара'])
   })
 
+  it('keeps a spaced number on one line', () => {
+    const s = parseSummary('ACTION: Анна | Оплатить 1 200 000 рублей\nOVERVIEW:\n- Бюджет 30 000 долларов\n- Встреча 20 ноября в 2026 году')!
+    expect(s.actionItems[0].task).toBe('Оплатить 1\u00a0200\u00a0000 рублей')
+    expect(s.overview).toEqual(['Бюджет 30\u00a0000 долларов', 'Встреча 20 ноября в 2026 году'])
+  })
+
   it('reads Russian dashes as bullets', () => {
     expect(parseSummary('OVERVIEW:\n— Первый пункт\n– Второй пункт')!.overview).toEqual(['Первый пункт', 'Второй пункт'])
   })

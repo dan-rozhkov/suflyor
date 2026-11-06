@@ -83,7 +83,8 @@ const LABEL = /^(?:[-*•—–]\s+|\d+[.)]\s+)?\**\s*(TITLE|ACTION|OVERVIEW|TOP
 const BULLET = /^(?:[-*•—–]\s+|\d+[.)]\s+)(.*)$/
 
 function clean(s: string, max: number): string {
-  return s.replace(/\*+/g, '').replace(/\s+/g, ' ').trim().slice(0, max).trim()
+  // A no-break space inside "30 000", so the number does not split across lines. It goes last: \s also matches it.
+  return s.replace(/\*+/g, '').replace(/\s+/g, ' ').replace(/(\d) (?=\d{3}(?!\d))/g, '$1\u00a0').trim().slice(0, max).trim()
 }
 
 export function parseSummary(text: string, language = 'ru'): Summary | null {
