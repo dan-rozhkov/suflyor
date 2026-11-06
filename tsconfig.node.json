@@ -13,5 +13,5 @@
     "verbatimModuleSyntax": true,
     "noUnusedLocals": true
   },
-  "include": ["vite.config.mts", "vitest.config.mts"]
+  "include": ["vite.config.mts", "vitest.config.mts", "src/splash.test.ts"]
 }

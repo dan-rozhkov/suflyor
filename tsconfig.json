@@ -12,5 +12,6 @@
     "verbatimModuleSyntax": true,
     "noUnusedLocals": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/splash.test.ts"]
 }
