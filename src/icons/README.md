@@ -16,6 +16,7 @@ Icons marked `drawn` are ours, drawn in the same style. Most reuse a detail of a
 | `arrow-left` | drawn | shaft and head, mirrored `arrow-right` |
 | `arrow-right` | drawn | shaft and head |
 | `arrow-up` | drawn | shaft and head, as `arrow-down` turned |
+| `at-sign` | drawn | no such icon in the free set |
 | `calendar` | Streamline | `blank-calendar` |
 | `check` | drawn | straight tick |
 | `check-square` | Streamline | `check-square` |
@@ -25,12 +26,14 @@ Icons marked `drawn` are ours, drawn in the same style. Most reuse a detail of a
 | `more` | drawn | dots of `chat-bubble-typing-oval`, enlarged |
 | `paperclip` | Streamline | `paperclip-1` |
 | `plus` | drawn | plus of `copy-2`, enlarged |
+| `plug` | drawn | no such icon in the free set |
 | `record` | Streamline | `button-record-1` |
 | `refresh` | changed | `rotate-left`, mirrored |
 | `spark` | changed | largest star of `multiple-stars`, enlarged |
 | `stop` | drawn | outline of `check-square`, smaller |
 | `translate` | drawn | letters A and Я, no such icon in the free set |
 | `trash` | drawn | bin with a lid, as in the set's artwork, not in the free set |
+| `users` | Streamline | `user-collaborate-group` |
 
 ## In reserve
 

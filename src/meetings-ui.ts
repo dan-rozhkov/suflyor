@@ -18,10 +18,15 @@ import { requestAnswer } from './ask'
 import type { AskTurn } from './ask-prompt'
 import { MAX_ASK_QUESTION_CHARS } from './ask-limits'
 import { boldParts, summaryLabels, summaryMarkdown } from './summary'
+import gmailLogo from './logos/gmail.svg?url'
+import googleCalendarLogo from './logos/google-calendar.svg?url'
+import notionLogo from './logos/notion.svg?url'
+import slackLogo from './logos/slack.svg?url'
+import zoomLogo from './logos/zoom.svg?url'
 import { addHaptic } from './haptics'
 import { copyToClipboard } from './dom'
 import { CALL_ROUTE, parentRoute, parseRoute, routeHash, type MeetingTab, type Route } from './router'
-import { ICON_ARROW_LEFT, ICON_ARROW_RIGHT, ICON_ARROW_UP, ICON_CALENDAR, ICON_CHECK, ICON_CHECK_SQUARE, ICON_CLOSE, ICON_CLOCK, ICON_COPY, ICON_TRANSLATE } from './icons'
+import { ICON_ARROW_LEFT, ICON_ARROW_RIGHT, ICON_ARROW_UP, ICON_AT_SIGN, ICON_CALENDAR, ICON_CHECK, ICON_CHECK_SQUARE, ICON_CLOSE, ICON_CLOCK, ICON_COPY, ICON_PLUG, ICON_SPARK, ICON_TRANSLATE, ICON_USERS } from './icons'
 
 export interface UiDeps {
   /** Holds the views and the Ask sheet. */
@@ -466,6 +471,7 @@ export function createMeetingsUi(deps: UiDeps): MeetingsUi {
     p.log.replaceChildren(...out)
     if (p.empty) p.empty.hidden = out.length > 0
     p.log.hidden = out.length === 0
+    p.log.closest('.ask-col')?.classList.toggle('has-turns', out.length > 0)
     p.send.disabled = !!st.pending
     p.input.readOnly = !!st.pending
     if (st.failed && !p.input.value) {
@@ -538,20 +544,83 @@ export function createMeetingsUi(deps: UiDeps): MeetingsUi {
     return { form, pane: { input, send } }
   }
 
-  const PROMPTS = ['What are my open action items?', 'What did we agree on in the last call?', 'Which topics came up in more than one call?']
+  const PROMPTS: { icon: string; text: string }[] = [
+    { icon: ICON_CALENDAR, text: 'Help me prepare for my next meeting' },
+    { icon: ICON_USERS, text: 'What did we discuss with Sarah last time?' },
+    { icon: ICON_PLUG, text: 'Connect Slack to get answers from your chats' }
+  ]
+  const SERVICES = [
+    { name: 'Slack', src: slackLogo },
+    { name: 'Notion', src: notionLogo },
+    { name: 'Gmail', src: gmailLogo },
+    { name: 'Google Calendar', src: googleCalendarLogo },
+    { name: 'Zoom', src: zoomLogo }
+  ]
+  const STRIP_KEY = 'suflyorAskStripHidden'
+
+  function stripHidden(): boolean {
+    try {
+      return localStorage.getItem(STRIP_KEY) === '1'
+    } catch {
+      return false
+    }
+  }
+
+  function toolButton(label: string, svg: string): HTMLButtonElement {
+    return h('button', { type: 'button', class: 'icon-btn ask-tool', 'aria-label': label, title: label }, iconEl(svg))
+  }
 
   function askView(): Built {
-    const title = h('h1', { class: 'state-title view-title ask-title', tabindex: '-1' }, 'Ask Suflyor')
+    const title = h('h1', { class: 'state-title view-title ask-title', tabindex: '-1' }, iconEl(ICON_SPARK, 'ask-title-ic'), 'Ask Suflyor')
     const log = h('div', { class: 'ask-log', role: 'log', 'aria-label': 'Answers' })
-    const c = composer(GLOBAL_KEY, true, 'Ask about all your meetings')
+    // The long hint fits the desktop box; a phone keeps the short one.
+    const placeholder = window.matchMedia('(min-width: 1024px)').matches ? 'Ask a question. Type @ to mention people, companies, tags or meetings' : 'Ask about all your meetings'
+    const c = composer(GLOBAL_KEY, true, placeholder)
+    const input = c.pane.input
+    c.form.classList.add('ask-box')
+
+    const at = toolButton('Mention', ICON_AT_SIGN)
+    at.addEventListener('click', () => {
+      const start = input.selectionStart ?? input.value.length
+      const end = input.selectionEnd ?? start
+      if (input.value.length - (end - start) + 1 > MAX_ASK_QUESTION_CHARS) return
+      input.focus()
+      input.setRangeText('@', start, end, 'end')
+    })
+    const plug = toolButton('Connect apps', ICON_PLUG)
+    const tools = h('div', { class: 'ask-tools' }, at, plug)
+    const send = c.pane.send
+    c.form.insertBefore(tools, send)
+
+    const strip = h('div', { class: 'ask-connect' }, h('span', { class: 'ask-connect-text' }, 'Get better answers by connecting your apps'))
+    const logos = h('span', { class: 'ask-logos' })
+    for (const sv of SERVICES) logos.append(h('img', { class: 'ask-logo', src: sv.src, alt: sv.name, title: sv.name }))
+    const dismiss = h('button', { type: 'button', class: 'icon-btn ask-close', 'aria-label': 'Dismiss', title: 'Dismiss' }, iconEl(ICON_CLOSE))
+    strip.append(logos, dismiss)
+    strip.hidden = stripHidden()
+    dismiss.addEventListener('click', () => {
+      strip.hidden = true
+      try {
+        localStorage.setItem(STRIP_KEY, '1')
+      } catch {
+        // The strip stays hidden for this visit only.
+      }
+      input.focus()
+    })
+    c.form.append(strip)
+
     const prompts = h('div', { class: 'ask-prompts' })
-    for (const text of PROMPTS) {
-      const b = h('button', { type: 'button', class: 'ask-prompt' }, text)
-      b.addEventListener('click', () => void ask(GLOBAL_KEY, text))
+    for (const p of PROMPTS) {
+      const b = h('button', { type: 'button', class: 'ask-prompt' }, iconEl(p.icon, 'ic'), h('span', {}, p.text))
+      b.addEventListener('click', () => {
+        input.value = p.text.slice(0, MAX_ASK_QUESTION_CHARS)
+        input.focus()
+        input.setSelectionRange(input.value.length, input.value.length)
+      })
       prompts.append(b)
     }
-    const empty = h('div', { class: 'ask-empty' }, h('p', { class: 'state-text' }, 'Ask a question about all your saved meetings.'), prompts)
-    const col = h('div', { class: 'view-col ask-col' }, title, empty, log, h('div', { class: 'ask-compose' }, c.form))
+    const empty = h('div', { class: 'ask-empty' }, prompts)
+    const col = h('div', { class: 'view-col ask-col' }, title, log, h('div', { class: 'ask-compose' }, c.form), empty)
     const pane: AskPane = { key: GLOBAL_KEY, log, empty, ...c.pane }
     panes.add(pane)
     queueMicrotask(() => paintPane(pane))

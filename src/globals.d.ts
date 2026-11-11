@@ -16,6 +16,12 @@ declare module '*.svg?raw' {
   export default source
 }
 
+// Image files imported as a URL with Vite's ?url suffix.
+declare module '*.svg?url' {
+  const url: string
+  export default url
+}
+
 // Vite's glob import, used by the icon tests to read the pack as text.
 interface ImportMeta {
   glob(pattern: string, options: { query: '?raw'; import: 'default'; eager: true }): Record<string, string>

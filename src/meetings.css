@@ -694,11 +694,19 @@ textarea.composer-input {
   line-height: 1.35;
 }
 
-/* the Ask screen for all meetings */
+/* the Ask screen for all meetings: the extras of the desktop box stay hidden on a phone */
+.ask-title-ic,
+.ask-tools,
+.ask-connect,
+.ask-prompt .ic {
+  display: none;
+}
 .ask-title {
+  order: -2;
   padding: 0 var(--space-2);
 }
 .ask-empty {
+  order: -1;
   margin-top: var(--space-3);
 }
 .ask-empty .state-text {
@@ -774,13 +782,18 @@ textarea.composer-input {
     border: 1px solid var(--line);
     border-radius: 16px;
     background: var(--sheet);
+    /* The border colour is translucent: with the dark background of a running call under it, it showed as a black frame. */
+    background-clip: padding-box;
   }
   .app:has(.code-form:not([hidden])) .stage {
     border: 0;
     border-radius: 0;
   }
   .app.running .stage {
-    background: var(--base);
+    /* Dark only behind the dock and the sheet's rounded bottom corners. A dark top would show through the
+       translucent border and the antialiased top corners as a black frame. Longhands keep background-clip. */
+    background-color: var(--sheet);
+    background-image: linear-gradient(var(--sheet) 50%, var(--base) 50%);
   }
   .views {
     padding: 0;
@@ -1258,37 +1271,181 @@ textarea.composer-input {
   .view[data-kind='ask'] .view-col {
     flex-basis: 680px;
     justify-content: center;
-    padding-top: 0;
+    padding: 0 0 72px;
   }
   .view[data-kind='ask'] .view-body {
     min-height: 100%;
   }
   .ask-title {
-    margin-bottom: var(--space-5);
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 32px;
     font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
   }
-  .ask-empty .state-text {
-    padding: 0;
-    text-align: center;
+  .ask-title-ic {
+    display: inline-flex;
+    color: var(--text-muted);
+  }
+  .ask-title-ic svg {
+    width: 22px;
+    height: 22px;
   }
   .ask-prompts {
     overflow: hidden;
+    margin-top: 0;
     border: 1px solid var(--line);
     border-radius: 16px;
   }
   .ask-prompt {
-    padding: 13px var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 11px var(--space-4);
     font-size: var(--text-sm);
     font-weight: 500;
+    line-height: 1.5;
     cursor: pointer;
   }
   .ask-prompt:first-child {
     border-top: 0;
   }
+  .ask-prompt .ic {
+    display: inline-flex;
+    color: var(--text-muted);
+  }
+  .ask-prompt .ic {
+    height: 16px;
+    line-height: 0;
+  }
+  .ask-prompt .ic svg {
+    width: 16px;
+    height: 16px;
+  }
   .ask-compose {
-    margin-top: var(--space-4);
+    margin-top: 0;
     padding-bottom: var(--space-5);
+  }
+  .ask-col:not(.has-turns) .ask-compose {
+    position: static;
+    padding: 0;
+    margin-bottom: 24px;
+  }
+  .ask-empty {
+    order: 0;
+    margin-top: 0;
+  }
+  .ask-box {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--sheet);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 20px rgba(0, 0, 0, 0.07);
+  }
+  .ask-box textarea.composer-input {
+    grid-column: 1 / -1;
+    display: block;
+    width: 100%;
+    min-height: 84px;
+    padding: 18px 20px 0;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .ask-tools {
+    display: flex;
+    gap: 2px;
+    padding: 12px 0 7px 12px;
+  }
+  .ask-tool,
+  .ask-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .ask-tool:hover,
+  .ask-close:hover {
+    background: var(--surface-active);
+  }
+  .ask-box .send {
+    width: 32px;
+    height: 32px;
+    margin: 12px 12px 7px 0;
+  }
+  .ask-box .send svg {
+    width: 18px;
+    height: 18px;
+  }
+  .ask-connect {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px 9px 20px;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .ask-connect[hidden] {
+    display: none;
+  }
+  .ask-connect-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ask-logos {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ask-logo {
+    display: block;
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+  }
+  .ask-close {
+    margin-left: -4px;
+  }
+  .ask-close svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+  }
+  .ask-logo {
+    flex: none;
+  }
+  .ask-col.has-turns .ask-title {
+    display: none;
+  }
+  .ask-col.has-turns {
+    justify-content: flex-end;
+  }
+  .ask-col.has-turns .ask-log {
+    margin: 0 0 var(--space-4);
   }
 }
 
