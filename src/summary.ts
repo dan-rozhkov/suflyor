@@ -165,7 +165,7 @@ export function summaryLabels(language: string): {
         copyFailed: 'Не удалось скопировать итоги.'
       }
     : {
-        actions: 'Action items',
+        actions: 'Action Items',
         overview: 'Overview',
         date: 'Date',
         duration: 'Duration',
@@ -199,8 +199,8 @@ export interface SummaryMarkdownInput {
 }
 
 /**
- * The notes as markdown, in the meeting-notes layout: an H1 title, Date, Duration and People, then H4 sections
- * for action items, the overview and each topic. Nothing is added that the notes do not hold.
+ * The notes as markdown, in the meeting-notes layout: an H1 title, Date, Duration and People, an H4 section for
+ * the action items, then H2 sections for the overview and each topic. Nothing is added that the notes do not hold.
  */
 export function summaryMarkdown({ summary, startedAt, durationMs, language, cut }: SummaryMarkdownInput): string {
   const labels = summaryLabels(language)
@@ -219,7 +219,7 @@ export function summaryMarkdown({ summary, startedAt, durationMs, language, cut 
     })
     sections.push([`#### ${labels.actions}`, ...items].join('\n'))
   }
-  const bullets = (title: string, list: string[]): string => [`#### ${oneLine(title)}`, ...list.map((b) => `* ${oneLine(b)}`)].join('\n')
+  const bullets = (title: string, list: string[]): string => [`## ${oneLine(title)}`, ...list.map((b) => `* ${oneLine(b)}`)].join('\n')
   if (summary.overview.length) sections.push(bullets(labels.overview, summary.overview))
   for (const t of summary.topics) if (t.bullets.length) sections.push(bullets(t.title, t.bullets))
   return `${[...head, ...sections].join('\n\n')}\n`

@@ -485,7 +485,7 @@ describe('worker /api/summary', () => {
   it('returns the parsed summary with a non-streaming request that carries the key only to OpenCode', async () => {
     const f = vi.fn(async () => answer())
     vi.stubGlobal('fetch', f)
-    const res = await post({ lines: ['We ship in May.', 'Okay.'], context: 'Acme pilot with Anna', model: 'evil', stream: true })
+    const res = await post({ lines: ['We ship in May.', 'Anna, can you send the contract? Okay.'], context: 'Acme pilot with Anna', model: 'evil', stream: true })
     expect(res.status).toBe(200)
     const text = await res.text()
     expect(JSON.parse(text)).toEqual({

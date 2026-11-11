@@ -200,6 +200,6 @@ describe('summaryLabels', () => {
   })
   it('gives English headings for everything else', () => {
     expect(summaryLabels('de')).toEqual(summaryLabels('en'))
-    expect(summaryLabels('en')).toMatchObject({ actions: 'Action items', overview: 'Overview', date: 'Date', duration: 'Duration', people: 'People' })
+    expect(summaryLabels('en')).toMatchObject({ actions: 'Action Items', overview: 'Overview', date: 'Date', duration: 'Duration', people: 'People' })
   })
 })

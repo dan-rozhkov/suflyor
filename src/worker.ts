@@ -240,8 +240,8 @@ async function handleSummary(request: Request, env: Env): Promise<Response> {
     if (!content) return json({ error: 'upstream' }, 502)
     const parsed = parseSummary(content, languages.language)
     if (!parsed) return json({ error: 'upstream' }, 502)
-    // People and owners only as the call or the call notes named them.
-    return json({ summary: groundSummary(parsed, [...lines, context]) }, 200)
+    // People only as the call or the call notes named them; owners only as the call named them.
+    return json({ summary: groundSummary(parsed, lines, context) }, 200)
   } catch {
     return json({ error: 'upstream' }, 502)
   }
