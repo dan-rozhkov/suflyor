@@ -1,0 +1,380 @@
+/* The call screen of a wide window: the call on the left, its cards on the right.
+   The 1024px below is DESKTOP_QUERY in live-desktop.ts: change them together.
+   A phone never sees the header or the cards, and keeps its own dock and replies sheet. */
+.live-head,
+.live-side {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  /* The replies sheet is replaced by the Suggested replies card. */
+  .replies {
+    display: none;
+  }
+
+  .app.running .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 820px) 320px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: 48px;
+    justify-content: center;
+    padding: 0 40px;
+    /* The dark gradient was for the full-width dock strip. The dock is now a pill on the white panel; with the gradient
+       the lower half of the panel would be black. Longhands keep the background-clip of .stage. */
+    background-color: var(--sheet);
+    background-image: none;
+  }
+  .app.running .live-head {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    padding-top: 48px;
+  }
+  /* Not positioned: the corner buttons and the menu are placed against the panel, top right, above the cards. */
+  .app.running .page {
+    position: static;
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    background: transparent;
+    border-radius: 0;
+  }
+  .app.running .dock {
+    grid-column: 1;
+    grid-row: 3;
+    min-width: 0;
+    background: transparent;
+  }
+  .app.running .live-side {
+    display: block;
+    grid-column: 2;
+    grid-row: 1 / 4;
+    min-height: 0;
+    padding: 56px 0 var(--space-5);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .app.running .live-side::-webkit-scrollbar {
+    display: none;
+  }
+  .app.running .chapters {
+    display: none;
+  }
+  /* The dots sit in the header, right of the Notes pill, not in the panel corner above the cards.
+     The right edge of the left column: the panel padding, or the centring margin when the panel is wider. */
+  .app.running .top-actions {
+    top: 48px;
+    right: calc(max(40px, (100% - 1188px) / 2) + 368px);
+  }
+  .app.running .live-title-row {
+    padding-right: 56px;
+  }
+  /* The menu opens under the dots, wherever they are. */
+  .app.running .menu {
+    top: 104px;
+    right: calc(max(40px, (100% - 1188px) / 2) + 368px);
+  }
+  .app.running .foot {
+    padding-inline: 0;
+  }
+
+  /* header */
+  .live-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+  .live-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--text-title);
+    font-weight: 800;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .live-notes-btn {
+    flex: none;
+    height: 40px;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: var(--sheet);
+    color: var(--text);
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+  .live-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .live-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    color: var(--text-muted);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .live-chip-live {
+    color: var(--text);
+  }
+  .live-chip-time {
+    font-variant-numeric: tabular-nums;
+  }
+  .live-chip-icon svg,
+  .live-card-icon svg,
+  .live-ghost-icon svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+  }
+  .live-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--stop);
+    animation: live-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes live-pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  /* the feed in the left column: the text starts at the title's edge */
+  .app.running .feed {
+    padding: var(--space-5) 0 var(--space-4);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
+  }
+  /* The call notes take the cards' place in the right column; the feed and the dock stay. Placed against the panel like
+     the corner buttons: the right edge is the panel padding, or the centring margin when the panel is wider. */
+  .app.running #context-panel {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    bottom: 0;
+    right: max(40px, (100% - 1188px) / 2);
+    width: 320px;
+    max-width: none;
+    margin: 0;
+    justify-content: flex-start;
+    padding: 56px 0 var(--space-5);
+    overflow-y: auto;
+    background: var(--sheet);
+  }
+  .app.running #context-panel .panel-close {
+    top: var(--space-2);
+    right: 0;
+  }
+  /* The dots stay in the header while the notes are open. */
+  .app.running .page:has(#context-panel:not([hidden])) .top-actions {
+    display: flex;
+  }
+
+  /* the dock: the black pill */
+  .app.running .dock-inner {
+    max-width: none;
+    margin: 0;
+  }
+  .app.running .bar {
+    min-height: 64px;
+    margin: var(--space-2) 0 var(--space-5);
+    padding: 8px;
+    border-radius: var(--radius-pill);
+    background: var(--base);
+  }
+  .app.running .bar-round,
+  .app.running .stop {
+    width: 48px;
+    height: 48px;
+  }
+  .app.running .bar-round svg,
+  .app.running .stop svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* cards */
+  .live-card {
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--sheet);
+  }
+  .live-notes {
+    border-color: transparent;
+    background: var(--surface);
+  }
+  .live-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: 28px;
+    margin-bottom: var(--space-3);
+  }
+  .live-card-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .live-replies.is-streaming .live-card-icon {
+    animation: spin 1.6s linear infinite;
+  }
+  .live-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .live-ghost:disabled {
+    opacity: 0.4;
+  }
+  .live-card-head .live-ghost {
+    margin-right: -8px;
+  }
+  .live-edit,
+  .live-latest {
+    margin: var(--space-2) 0 0 -8px;
+  }
+  .live-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+  .live-replies:has(.live-replies-body > *) .live-hint {
+    display: none;
+  }
+  .live-card button:focus-visible,
+  .live-notes-btn:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+
+  /* replies: the list the dock sheet shows on a phone */
+  .live-replies-body {
+    padding: 0;
+  }
+  .live-replies-body .opts {
+    padding: 0;
+  }
+  .live-replies-body .opt {
+    padding: 10px 0;
+  }
+  .live-replies-body .opt-text {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .live-replies-body .more {
+    margin: 0;
+  }
+  .live-replies-body .skeletons {
+    padding: 0 0 var(--space-2);
+  }
+
+  /* chapters */
+  .live-chapter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .live-chapter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% + 16px);
+    margin: 0 -8px;
+    padding: 7px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--text);
+    font-size: var(--text-sm);
+    text-align: left;
+  }
+  .live-chapter-time {
+    flex: none;
+    min-width: 36px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .live-chapter-title {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .live-chapter.is-current {
+    background: var(--surface);
+    font-weight: 700;
+  }
+  .live-chapter.is-current::after {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--stop);
+  }
+
+  /* notes */
+  .live-notes-text {
+    margin: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
+    overflow: hidden;
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+  }
+  .live-notes-text.is-empty {
+    color: var(--text-muted);
+  }
+}
+
+@media (min-width: 1024px) and (hover: hover) {
+  .live-ghost:hover:not(:disabled),
+  .live-chapter:hover:not(.is-current) {
+    background: var(--surface-active);
+  }
+  .live-notes-btn:hover {
+    background: var(--surface);
+  }
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .live-dot,
+  .live-replies.is-streaming .live-card-icon {
+    animation: none;
+  }
+}

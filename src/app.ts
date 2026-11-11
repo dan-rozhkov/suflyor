@@ -2,6 +2,7 @@ import '@fontsource-variable/nunito'
 import './tokens.css'
 import './app.css'
 import './meetings.css'
+import './live.css'
 import { shownLang, shownText, type Utterance } from './types'
 import { originalForHero, paragraphParts, paragraphs, paragraphText, sentenceGap } from './sentences'
 import { createSonioxClient } from './soniox'
@@ -9,7 +10,7 @@ import { startMic } from './mic'
 import { createSession, MIC_DENIED_MESSAGE, type SessionState } from './session'
 import { BAD_CODE_MESSAGE, fetchToken } from './token'
 import { loadContext, saveContext } from './context'
-import { LANGUAGES } from './languages'
+import { LANGUAGES, languageName } from './languages'
 import { feedLanguage, loadSettings, saveSettings, withSource, withTarget, type Settings } from './settings'
 import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
@@ -19,11 +20,12 @@ import { ICON_ALERT, ICON_CALENDAR, ICON_CHECK, ICON_CHECK_SQUARE, ICON_CHEVRON_
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 import { buildTranscript, saveMarkdown, transcriptFileName } from './transcript'
 import { requestSummary, summaryLines, SUMMARY_FAILED_MESSAGE } from './summary'
-import { applySummary, NOTES_NOT_WRITTEN_MESSAGE, type Meeting } from './meetings'
+import { applySummary, fallbackTitle, NOTES_NOT_WRITTEN_MESSAGE, type Meeting } from './meetings'
 import { getMeeting, putMeeting, updateMeeting } from './meetings-db'
 import { buildMeeting, heardText } from './run-meeting'
 import { createMeetingsUi } from './meetings-ui'
 import { routeHash, startRouter, type Route } from './router'
+import { createLiveDesktop, DESKTOP_QUERY } from './live-desktop'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const formEl = $<HTMLFormElement>('code-form')
@@ -156,6 +158,21 @@ contextCloseEl.innerHTML = ICON_CLOSE
 settingsCloseEl.innerHTML = ICON_CLOSE
 document.querySelectorAll('.select-chev').forEach((el) => (el.innerHTML = ICON_CHEVRON_DOWN))
 
+/** The wide window's header and cards. The phone never shows them. */
+const live = createLiveDesktop({
+  stage: document.querySelector<HTMLElement>('.stage')!,
+  before: pageEl,
+  after: dockEl,
+  repliesBody: repliesBodyEl,
+  onNotes: (opener) => openContext(opener),
+  onRefresh: () => suggestEl.click(),
+  onJump: (i) => {
+    const c = chapters[i]
+    if (c) jumpTo(c)
+  },
+  onLatest: () => jumpToLatest()
+})
+
 function logoIcon(): Node {
   return $<HTMLTemplateElement>('logo-icon').content.firstElementChild!.cloneNode(true)
 }
@@ -209,6 +226,7 @@ const CONTEXT_CUT_NOTE = 'Saved the first 100,000 characters.'
 const CONTEXT_MEMORY_NOTE = 'Saved for this session only.'
 
 function renderContextLink(): void {
+  live.setNotes(loadContext())
   const on = !!loadContext()
   if (on) {
     contextEl.dataset.on = ''
@@ -225,15 +243,29 @@ function setContextError(text: string): void {
   contextTextEl.classList.toggle('field-error', !!text)
 }
 
-function openContext(): void {
-  if (running || !code) return
+/** The button that opened the notes during a call on a wide window: focus goes back to it. */
+let notesOpener: HTMLElement | null = null
+
+function openContext(opener?: HTMLElement): void {
+  // A wide window shows the notes beside the call: they can be opened during it, and the dock stays.
+  if ((running && !desktop.matches) || !code) return
+  if (openPanel === 'context') {
+    contextTextEl.focus()
+    return
+  }
   openPanel = 'context'
   setToast('', null)
   formEl.hidden = true
-  feedWrapEl.hidden = true
+  // During a call the feed stays: the panel takes the cards' place on the right.
+  feedWrapEl.hidden = !running
   contextPanelEl.hidden = false
   contextTextEl.value = loadContext()
   setContextError('')
+  if (running) {
+    notesOpener = opener instanceof HTMLElement ? opener : null
+    live.setNotesOpen(true)
+    contextTextEl.focus()
+  }
 }
 
 /** Closes whichever panel is open. Focus goes back to the More button only when asked: other callers are changing the screen. */
@@ -245,11 +277,18 @@ function closePanel(returnFocus = false): void {
   settingsPanelEl.hidden = true
   formEl.hidden = !!code
   feedWrapEl.hidden = !code
+  live.setNotesOpen(false)
   if (returnFocus && was === 'settings') moreEl.focus()
+  if (returnFocus && was === 'context' && running && desktop.matches) {
+    const back = notesOpener && notesOpener.isConnected ? notesOpener : null
+    if (back) back.focus({ preventScroll: true })
+    else live.focusNotesButton()
+  }
+  notesOpener = null
 }
 
-contextEl.addEventListener('click', openContext)
-contextCloseEl.addEventListener('click', () => closePanel())
+contextEl.addEventListener('click', () => openContext())
+contextCloseEl.addEventListener('click', () => closePanel(true))
 contextSaveEl.addEventListener('click', () => {
   const r = saveContext(contextTextEl.value)
   renderContextLink()
@@ -260,7 +299,7 @@ contextSaveEl.addEventListener('click', () => {
     setContextError(note)
     return
   }
-  closePanel()
+  closePanel(true)
 })
 contextTextEl.addEventListener('input', () => setContextError(''))
 contextFileBtnEl.addEventListener('click', () => contextFileEl.click())
@@ -662,21 +701,32 @@ function renderChapters(): void {
     chaptersEl.insertBefore(b, latestBtn)
   }
   while (chapterBtns.length > chapters.length) chapterBtns.pop()!.remove()
+  const langs = chapters.map((c) => {
+    const started = order.find((u) => u.id === c.key.id)
+    return started ? shownLang(started) : feedLanguage(run)
+  })
   chapters.forEach((c, i) => {
     const [title, time] = chapterBtns[i].children as unknown as HTMLElement[]
     if (title.textContent !== c.title) title.textContent = c.title
-    const started = order.find((u) => u.id === c.key.id)
-    title.lang = started ? shownLang(started) : feedLanguage(run)
+    title.lang = langs[i]
     title.dir = 'auto'
     const t = clockShortFmt.format(c.at)
     if (time.textContent !== t) time.textContent = t
   })
+  live.setChapters(
+    chapters.map((c, i) => ({
+      time: formatElapsed(Math.max(0, Math.floor((c.at - startedAt) / 1000))),
+      title: c.title,
+      lang: langs[i]
+    }))
+  )
   currentChapter = -1
   updateCurrent()
 }
 
 function updateCurrent(): void {
   latestBtn.hidden = pinned
+  live.setLatest(!pinned && chapters.length > 0)
   const feedTop = feedEl.getBoundingClientRect().top
   let cur = 0
   chapters.forEach((c, i) => {
@@ -687,6 +737,7 @@ function updateCurrent(): void {
   if (pinned) cur = chapters.length - 1
   if (cur === currentChapter || !chapterBtns.length) return
   currentChapter = cur
+  live.setCurrent(cur)
   chapterBtns.forEach((b, i) => {
     if (i === cur) b.setAttribute('aria-current', 'true')
     else b.removeAttribute('aria-current')
@@ -711,14 +762,18 @@ function scheduleCurrent(): void {
   })
 }
 
-latestBtn.addEventListener('click', (e) => {
-  if (openedByTap(e)) return
+function jumpToLatest(): void {
   // At once: text arriving during a smooth scroll would leave the feed short of the bottom.
   jumpUntil = 0
   window.clearTimeout(jumpTimer)
   feedEl.scrollTop = feedEl.scrollHeight
   pinned = true
   scheduleCurrent()
+}
+
+latestBtn.addEventListener('click', (e) => {
+  if (openedByTap(e)) return
+  jumpToLatest()
   if (hoverNone.matches) closeRail()
 })
 feedEl.addEventListener('scroll', scheduleCurrent)
@@ -777,8 +832,11 @@ function startTimer(): void {
   window.clearInterval(elapsedTimer)
   startedAt = Date.now()
   elapsedEl.textContent = '0:00'
+  live.setHeader(fallbackTitle(startedAt), run.translate ? `${languageName(run.source)} → ${languageName(run.target)}` : languageName(run.source))
+  live.setElapsed('0:00')
   elapsedTimer = window.setInterval(() => {
     elapsedEl.textContent = formatElapsed(Math.floor((Date.now() - startedAt) / 1000))
+    live.setElapsed(elapsedEl.textContent)
   }, 1000)
 }
 
@@ -840,7 +898,7 @@ function onState(s: SessionState): void {
   idleEl.inert = running
   contextEl.hidden = running
   if (running) {
-    closePanel()
+    if (!(wasRunning && openPanel === 'context' && desktop.matches)) closePanel()
   } else resetReplies()
   waveEl.classList.toggle('wave-idle', s.phase !== 'listening')
   toggleEl.disabled = !code
@@ -897,6 +955,7 @@ function suggestLines(): string[] {
 function renderSuggestButton(): void {
   suggestEl.disabled =
     !running || phase === 'stopping' || replyState?.status === 'streaming' || suggestLines().length === 0
+  live.setRefreshDisabled(suggestEl.disabled)
 }
 
 function copyText(text: string): void {
@@ -1007,6 +1066,15 @@ function scheduleClear(): void {
   clearTimer = window.setTimeout(finish, 400)
 }
 
+/** The status goes to the line of the layout that is on screen only: the other stays empty, so nothing is read twice. */
+function announceReplies(): void {
+  const st = replyState
+  const text = st?.status === 'streaming' ? 'Finding replies' : st?.options.length ? 'Replies ready' : ''
+  const wide = desktop.matches
+  repliesStatusEl.textContent = wide ? '' : text
+  live.setStatus(wide ? text : '')
+}
+
 function renderReplies(): void {
   const st = replyState
   const open = !!st
@@ -1014,7 +1082,8 @@ function renderReplies(): void {
   repliesEl.inert = !open
   const streaming = st?.status === 'streaming'
   sparkEl.classList.toggle('spark-live', streaming)
-  repliesStatusEl.textContent = streaming ? 'Finding replies' : st?.options.length ? 'Replies ready' : ''
+  live.setStreaming(streaming)
+  announceReplies()
   renderSuggestButton()
   if (!st) {
     scheduleClear()
@@ -1087,7 +1156,7 @@ function renderReplies(): void {
 }
 
 function resetReplies(): void {
-  const hadFocus = repliesEl.contains(document.activeElement)
+  const hadFocus = repliesEl.contains(document.activeElement) || repliesBodyEl.contains(document.activeElement)
   repliesGen++
   suggester.cancel()
   window.clearTimeout(copiedTimer)
@@ -1095,7 +1164,8 @@ function resetReplies(): void {
   replyState = null
   moreOpen = false
   renderReplies()
-  if (hadFocus) suggestEl.focus()
+  // On a wide window the list is in the card: focus goes to its Refresh button.
+  if (hadFocus && !(desktop.matches && live.focusRefresh())) suggestEl.focus()
 }
 
 /** The Worker refused the code: stop, forget everything and ask for it again. */
@@ -1137,7 +1207,7 @@ suggestEl.addEventListener('click', () => {
 })
 repliesCloseEl.addEventListener('click', () => {
   resetReplies()
-  suggestEl.focus()
+  if (!desktop.matches) suggestEl.focus()
 })
 
 /* meetings: save at Stop, write the notes, open them */
@@ -1353,7 +1423,12 @@ addVibration()
 
 /* routes and the meetings views */
 
-const desktop = window.matchMedia('(min-width: 1024px)')
+const desktop = window.matchMedia(DESKTOP_QUERY)
+desktop.addEventListener('change', () => {
+  // Crossing the breakpoint: the notes panel of a call has a place on one side only, so it closes (as the close button does).
+  if (running && openPanel === 'context') closePanel()
+  announceReplies()
+})
 
 function syncDockInert(): void {
   dockEl.inert = !running || (!!code && route.kind !== 'call')
@@ -1365,6 +1440,7 @@ function syncRoute(): void {
   if (views) closePanel()
   appEl.dataset.route = route.kind
   pageEl.inert = views
+  live.setInert(views)
   syncDockInert()
   newMeetingEl.toggleAttribute('data-current', !!code && route.kind === 'call')
   if (code && route.kind === 'call') newMeetingEl.setAttribute('aria-current', 'page')
