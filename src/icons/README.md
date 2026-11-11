@@ -13,15 +13,24 @@ Icons marked `drawn` are ours, drawn in the same style. Most reuse a detail of a
 | Icon | Origin | Source |
 | --- | --- | --- |
 | `alert` | Streamline | `warning-diamond` |
+| `arrow-left` | drawn | shaft and head, mirrored `arrow-right` |
+| `arrow-right` | drawn | shaft and head |
+| `arrow-up` | drawn | shaft and head, as `arrow-down` turned |
+| `calendar` | Streamline | `blank-calendar` |
 | `check` | drawn | straight tick |
+| `check-square` | Streamline | `check-square` |
 | `chevron-down` | drawn | arrowhead of `download-tray`, enlarged |
+| `clock` | drawn | circle with hands |
 | `close` | drawn | cross of `block-2`, without the circle |
 | `more` | drawn | dots of `chat-bubble-typing-oval`, enlarged |
 | `paperclip` | Streamline | `paperclip-1` |
+| `plus` | drawn | plus of `copy-2`, enlarged |
 | `record` | Streamline | `button-record-1` |
 | `refresh` | changed | `rotate-left`, mirrored |
 | `spark` | changed | largest star of `multiple-stars`, enlarged |
 | `stop` | drawn | outline of `check-square`, smaller |
+| `translate` | drawn | letters A and Я, no such icon in the free set |
+| `trash` | drawn | bin with a lid, as in the set's artwork, not in the free set |
 
 ## In reserve
 
@@ -42,12 +51,9 @@ Icons marked `drawn` are ours, drawn in the same style. Most reuse a detail of a
 | `mic` | drawn | no microphone in the free set |
 | `mute` | Streamline | `volume-mute` |
 | `notes` | Streamline | `text-file` |
-| `plus` | drawn | plus of `copy-2`, enlarged |
 | `search` | Streamline | `magnifying-glass` |
 | `settings` | Streamline | `cog` |
 | `timer` | Streamline | `stopwatch` |
-| `translate` | drawn | letters A and Я, no such icon in the free set |
-| `trash` | drawn | bin with a lid, as in the set's artwork, not in the free set |
 | `user` | Streamline | `user-circle-single` |
 | `voice` | Streamline | `music-equalizer` |
 | `volume` | Streamline | `volume-level-high` |

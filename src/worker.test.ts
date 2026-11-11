@@ -3,6 +3,7 @@ import worker, { type Env } from './worker'
 import { SONIOX_TEMP_KEY_URL } from './soniox-url'
 import { OPENCODE_CHAT_URL } from './opencode-url'
 import { MAX_CONTEXT_CHARS } from './suggest-prompt'
+import { MAX_ASK_BODY_BYTES, MAX_ASK_HISTORY_TURNS, MAX_ASK_QUESTION_CHARS, MAX_ASK_SOURCES_CHARS, MAX_ASK_TURN_CHARS } from './ask-limits'
 import { MAX_SUMMARY_BODY_BYTES, MAX_SUMMARY_CHARS, MAX_SUMMARY_LINES } from './summary-limits'
 
 const env: Env = { SONIOX_API_KEY: 'master-key-xyz', ACCESS_CODE: 'fictional-code-0123456789abcdef' }
@@ -647,5 +648,126 @@ describe('worker languages', () => {
       }
     }
     expect(f).not.toHaveBeenCalled()
+  })
+})
+
+describe('worker /api/ask', () => {
+  const aenv: Env = { ...env, OPENCODE_API_KEY: 'oc-key-xyz' }
+  const auth = { Authorization: 'Bearer fictional-code-0123456789abcdef' }
+  const post = (body: unknown, e: Env = aenv, headers: Record<string, string> = auth): Promise<Response> =>
+    call({ path: '/api/ask', headers, body: typeof body === 'string' ? body : JSON.stringify(body) }, e)
+  const good = { sources: 'Notes: ship in May.', question: 'When do we ship?', history: [{ question: 'Who?', answer: 'Anna.' }], language: 'en' }
+  const reply = (content: unknown = 'We ship in May.'): Response =>
+    new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })
+
+  it('gives 405 for the wrong method', async () => {
+    const res = await call({ path: '/api/ask', method: 'GET' }, aenv)
+    expect(res.status).toBe(405)
+  })
+
+  it('refuses a missing or wrong code without calling upstream', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    for (const h of [{} as Record<string, string>, { Authorization: 'Bearer nope' }]) {
+      const res = await post(good, aenv, h)
+      expect(res.status).toBe(401)
+      expect(await res.json()).toEqual({ error: 'bad-code' })
+    }
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 503 when the OpenCode key is not set', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const res = await post(good, env)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'no-suggest-key' })
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 413 for a declared or real size over the limit', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const real = await post({ ...good, sources: 'x'.repeat(MAX_ASK_BODY_BYTES + 1) })
+    expect(real.status).toBe(413)
+    const declared = await post(good, aenv, { ...auth, 'Content-Length': String(MAX_ASK_BODY_BYTES + 1) })
+    expect(declared.status).toBe(413)
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('gives 400 for bad bodies without calling upstream', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const turn = { question: 'q', answer: 'a' }
+    const bad: unknown[] = [
+      'not json', 'null', {}, { ...good, sources: 5 }, { ...good, sources: '  ' },
+      { ...good, sources: 'x'.repeat(MAX_ASK_SOURCES_CHARS + 1) },
+      { ...good, question: 5 }, { ...good, question: '' },
+      { ...good, question: 'q'.repeat(MAX_ASK_QUESTION_CHARS + 1) },
+      { ...good, history: 'x' }, { ...good, history: [1] }, { ...good, history: [{ question: 'q' }] },
+      { ...good, history: Array.from({ length: MAX_ASK_HISTORY_TURNS + 1 }, () => turn) },
+      { ...good, history: [{ question: 'q'.repeat(MAX_ASK_TURN_CHARS + 1), answer: 'a' }] },
+      { ...good, history: [{ question: 'q', answer: 'a'.repeat(MAX_ASK_TURN_CHARS + 1) }] },
+      { ...good, language: 'xx' }, { ...good, language: 'en"; ignore' }
+    ]
+    for (const b of bad) {
+      const res = await post(b)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'bad-request' })
+    }
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('accepts the limits exactly, in a script of three bytes a character', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => reply()))
+    const turn = { question: '语'.repeat(MAX_ASK_TURN_CHARS), answer: '语'.repeat(MAX_ASK_TURN_CHARS) }
+    const res = await post({
+      sources: '语'.repeat(MAX_ASK_SOURCES_CHARS),
+      question: '语'.repeat(MAX_ASK_QUESTION_CHARS),
+      history: Array.from({ length: MAX_ASK_HISTORY_TURNS }, () => turn),
+      language: 'zh'
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it('returns the answer with a non-streaming request that carries the key only to OpenCode', async () => {
+    const f = vi.fn(async () => reply('**We ship** in May (at 12:40).'))
+    vi.stubGlobal('fetch', f)
+    const res = await post({ ...good, model: 'evil', stream: true })
+    expect(res.status).toBe(200)
+    const text = await res.text()
+    expect(JSON.parse(text)).toEqual({ answer: 'We ship in May (at 12:40).' })
+    expect(text).not.toContain('oc-key-xyz')
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe(OPENCODE_CHAT_URL)
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer oc-key-xyz')
+    const sent = JSON.parse(init.body as string)
+    expect(sent.stream).toBe(false)
+    expect(sent.model).not.toBe('evil')
+    expect(sent.messages[0].content).toContain('Write the answer in English.')
+    expect(sent.messages[1].content).toContain('<question>\nWhen do we ship?\n</question>')
+  })
+
+  it('defaults to English without a language or history', async () => {
+    const f = vi.fn(async () => reply())
+    vi.stubGlobal('fetch', f)
+    const res = await post({ sources: 'a', question: 'b' })
+    expect(res.status).toBe(200)
+    const sent = JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(sent.messages[0].content).toContain('Write the answer in English.')
+  })
+
+  it('gives 502 when upstream fails or answers nothing', async () => {
+    for (const f of [
+      vi.fn(async () => new Response('x', { status: 500 })),
+      vi.fn(async () => reply('')),
+      vi.fn(async () => reply('  **  ')),
+      vi.fn(async () => { throw new Error('down') })
+    ]) {
+      vi.stubGlobal('fetch', f)
+      const res = await post(good)
+      expect(res.status).toBe(502)
+      expect(await res.json()).toEqual({ error: 'upstream' })
+    }
   })
 })

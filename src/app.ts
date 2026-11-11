@@ -1,6 +1,7 @@
 import '@fontsource-variable/nunito'
 import './tokens.css'
 import './app.css'
+import './meetings.css'
 import { shownLang, shownText, type Utterance } from './types'
 import { originalForHero, paragraphParts, paragraphs, paragraphText, sentenceGap } from './sentences'
 import { createSonioxClient } from './soniox'
@@ -14,11 +15,15 @@ import { buildSonioxContext } from './soniox-context'
 import { createSuggester, type SuggestUpdate } from './suggest'
 import { isInstalledApp, rootShortfall } from './viewport'
 import { addHaptic, addSwitchHaptic, addVibration } from './haptics'
-import { ICON_ALERT, ICON_CHECK, ICON_CHEVRON_DOWN, ICON_CLOSE, ICON_MORE, ICON_PAPERCLIP, ICON_RECORD, ICON_REFRESH, ICON_SPARK, ICON_STOP } from './icons'
+import { ICON_ALERT, ICON_CALENDAR, ICON_CHECK, ICON_CHECK_SQUARE, ICON_CHEVRON_DOWN, ICON_CLOSE, ICON_MORE, ICON_PAPERCLIP, ICON_PLUS, ICON_RECORD, ICON_REFRESH, ICON_SPARK, ICON_STOP } from './icons'
 import { createChapterer, type Chapter, type ChapterPara } from './chapters'
 import { buildTranscript, saveMarkdown, transcriptFileName } from './transcript'
-import { requestSummary, summaryLabels, summaryLines, summaryMeta } from './summary'
-import type { Summary } from './types'
+import { requestSummary, summaryLines, SUMMARY_FAILED_MESSAGE } from './summary'
+import { applySummary, NOTES_NOT_WRITTEN_MESSAGE, type Meeting } from './meetings'
+import { getMeeting, putMeeting, updateMeeting } from './meetings-db'
+import { buildMeeting, heardText } from './run-meeting'
+import { createMeetingsUi } from './meetings-ui'
+import { routeHash, startRouter, type Route } from './router'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const formEl = $<HTMLFormElement>('code-form')
@@ -33,6 +38,11 @@ const statusIconEl = $<HTMLElement>('status-icon')
 const statusTextEl = $<HTMLElement>('status-text')
 const diagEl = $<HTMLElement>('diag')
 const settingsItemEl = $<HTMLButtonElement>('settings')
+const meetingsItemEl = $<HTMLButtonElement>('meetings-item')
+const sidebarEl = $<HTMLElement>('sidebar')
+const viewsEl = $<HTMLElement>('views')
+const newMeetingEl = $<HTMLButtonElement>('new-meeting')
+const newMeetingLabelEl = $<HTMLElement>('new-meeting-label')
 const downloadEl = $<HTMLButtonElement>('download')
 const forgetEl = $<HTMLButtonElement>('forget')
 const moreEl = $<HTMLButtonElement>('more')
@@ -62,6 +72,7 @@ const settingsSourceEl = $<HTMLSelectElement>('settings-source')
 const settingsTranslateEl = $<HTMLInputElement>('settings-translate')
 const settingsTargetRowEl = $<HTMLElement>('settings-target-row')
 const settingsTargetEl = $<HTMLSelectElement>('settings-target')
+const pageEl = document.querySelector<HTMLElement>('.page')!
 const waveEl = $<HTMLElement>('wave')
 const elapsedEl = $<HTMLElement>('elapsed')
 
@@ -90,7 +101,7 @@ function writeCode(code: string): void {
 let code = readCode()
 
 /** Take the code from a `#code=` link and remove it from the address bar. */
-function takeCodeFromHash(): boolean {
+function takeCodeFromHash(keepHash = ''): boolean {
   // Not URLSearchParams: it turns '+' into a space and would corrupt the code.
   const m = /^#code=(.*)$/.exec(location.hash)
   if (!m) return false
@@ -101,7 +112,8 @@ function takeCodeFromHash(): boolean {
     /* not valid percent-encoding: use the text as it is */
   }
   fromUrl = fromUrl.trim()
-  history.replaceState(null, '', location.pathname + location.search)
+  // The current view's hash stays in the address bar; the history state (depth) is kept.
+  history.replaceState(history.state, '', location.pathname + location.search + keepHash)
   if (!fromUrl) return false
   code = fromUrl
   writeCode(code)
@@ -110,6 +122,8 @@ function takeCodeFromHash(): boolean {
 takeCodeFromHash()
 
 let running = false
+/** True only when the user tapped Stop; any other end of a run does not write notes by itself. */
+let explicitStop = false
 let phase: SessionState['phase'] = 'idle'
 let sentSamples = 0
 let peak = 0
@@ -126,6 +140,9 @@ let lastState: SessionState | undefined
 /** When each paragraph of each utterance first appeared. Never changes afterwards, even if the text is revised. */
 const stamps = new Map<string, number[]>()
 let chapters: Chapter[] = []
+/** Where the page is: the call screen, or one of the saved-meetings views. */
+let route: Route = { kind: 'call' }
+let routeOpener: HTMLElement | null = null
 /** The settings of the call that is running or just ended. Read at each Start, so a change mid-call never reaches it. */
 let run: Settings = loadSettings()
 
@@ -163,12 +180,14 @@ function showForm(error = ''): void {
   setCodeError(error)
   toggleEl.disabled = true
   codeEl.value = ''
+  syncRoute()
 }
 
 function showFeed(): void {
   closePanel()
   formEl.hidden = true
   feedWrapEl.hidden = false
+  syncRoute()
 }
 
 codeEl.addEventListener('input', () => setCodeError(''))
@@ -311,6 +330,8 @@ settingsTranslateEl.addEventListener('change', () => changeSettings({ ...loadSet
 
 function setMenu(open: boolean): void {
   settingsItemEl.hidden = running
+  // The desktop sidebar has its own Meetings link.
+  meetingsItemEl.hidden = desktop.matches
   // The file save can leave the page, which would stop the microphone mid-call. With nothing said there is nothing to save.
   downloadEl.hidden = running || !order.some((u) => u.translation.trim() || u.original.trim())
   menuEl.hidden = !open
@@ -318,7 +339,7 @@ function setMenu(open: boolean): void {
 }
 
 function menuItems(): HTMLElement[] {
-  return [settingsItemEl, downloadEl, forgetEl].filter((el) => !el.hidden)
+  return [meetingsItemEl, settingsItemEl, downloadEl, forgetEl].filter((el) => !el.hidden)
 }
 
 moreEl.addEventListener('click', () => {
@@ -359,8 +380,15 @@ downloadEl.addEventListener('click', () => {
   moreEl.focus()
 })
 
+meetingsItemEl.addEventListener('click', () => {
+  setMenu(false)
+  router.navigate({ kind: 'meetings' })
+})
+
 forgetEl.addEventListener('click', () => {
   setMenu(false)
+  // The notes of a saved call need the code: they stop here and can be asked again after a new one.
+  for (const ctrl of summaryRuns.values()) ctrl.abort()
   if (running) session.stop()
   resetReplies()
   clearFeed()
@@ -474,8 +502,7 @@ function renderUtterances(list: Utterance[]): void {
     if (!row) {
       row = document.createElement('article')
       rows.set(u.id, row)
-      // Final text can arrive around the stop: it belongs above the summary button.
-      feedEl.insertBefore(row, summary?.el ?? null)
+      feedEl.append(row)
     }
     paintRow(row, u, u === latest)
   }
@@ -508,8 +535,6 @@ if (typeof ResizeObserver !== 'undefined') {
 }
 
 function clearFeed(): void {
-  dropSummary()
-  summaryRun = null
   chapterer.reset()
   chapters = []
   stamps.clear()
@@ -541,6 +566,7 @@ const chapterer = createChapterer({
     chapters = list
     renderChapters()
     scheduleCurrent()
+    syncChapters()
   }
 })
 
@@ -809,7 +835,8 @@ function onState(s: SessionState): void {
   const darkHadFocus = dockEl.contains(document.activeElement)
   running = s.phase !== 'idle'
   appEl.classList.toggle('running', running)
-  dockEl.inert = !running
+  newMeetingLabelEl.textContent = running ? 'Current call' : 'New meeting'
+  syncDockInert()
   idleEl.inert = running
   contextEl.hidden = running
   if (running) {
@@ -818,9 +845,10 @@ function onState(s: SessionState): void {
   waveEl.classList.toggle('wave-idle', s.phase !== 'listening')
   toggleEl.disabled = !code
   stopEl.disabled = s.phase === 'stopping'
-  if (!running && wasRunning && s.message !== BAD_CODE_MESSAGE) {
-    chapterer.flush()
-    offerSummary()
+  if (!running && wasRunning) {
+    const bad = s.message === BAD_CODE_MESSAGE
+    if (!bad) chapterer.flush()
+    finishRun(bad, explicitStop)
   }
   renderSuggestButton()
   if (running && !wasRunning) stopEl.focus()
@@ -1112,183 +1140,119 @@ repliesCloseEl.addEventListener('click', () => {
   suggestEl.focus()
 })
 
-/* summary */
+/* meetings: save at Stop, write the notes, open them */
 
-interface SummaryBlock {
-  el: HTMLElement
-  btn: HTMLButtonElement
-  spark: HTMLElement
-  label: HTMLElement
-  status: HTMLElement
-  skeletons: HTMLElement
-  runStart: number
-  startedAt: number
-  durationMs: number
-  /** The language of the summary, the one the feed showed. Taken at Stop: the settings may change before the tap. */
-  language: string
-  /** The language spoken on the call. */
-  callLanguage: string
-  ctrl: AbortController | null
-  done: boolean
+/** Meetings whose summary request is running. */
+const summaryRuns = new Map<string, AbortController>()
+/** The meeting of the call that just ended, so a chapter that arrives after Stop still lands in it. */
+let lastMeeting: Meeting | null = null
+
+/** Stores the failed state of an existing meeting. A meeting deleted meanwhile stays deleted. */
+async function saveFailed(id: string, message: string): Promise<void> {
+  const next = await updateMeeting(id, (m) => ({ ...m, summaryState: { status: 'failed', message } }))
+  if (next && lastMeeting?.id === id) lastMeeting = next
 }
 
-/** The block at the end of the feed for the run that just ended; null once the next run starts or the code is forgotten. */
-let summary: SummaryBlock | null = null
-/** The call the button covers. It outlives a Start that heard nothing, so that Start does not lose the call before it. */
-let summaryRun: Pick<SummaryBlock, 'runStart' | 'startedAt' | 'durationMs' | 'language' | 'callLanguage'> | null = null
-
-function dropSummary(): void {
-  const s = summary
-  summary = null
-  s?.ctrl?.abort()
-  s?.el.remove()
-}
-
-function setSummaryBusy(s: SummaryBlock, busy: boolean): void {
-  s.btn.disabled = busy
-  s.spark.classList.toggle('spark-live', busy)
-  s.label.textContent = busy ? 'Summarizing' : 'Summarize'
-  s.skeletons.hidden = !busy
-  // The feed observer watches the feed box, not its content.
-  if (pinned) feedEl.scrollTop = feedEl.scrollHeight
-}
-
-/** After a run with text: a button at the end of the feed. The summary costs a call, so it waits for a tap. */
-function offerSummary(): void {
-  if (order.slice(runStart).some((u) => u.original.trim())) {
-    summaryRun = { runStart, startedAt, durationMs: Date.now() - startedAt, language: feedLanguage(run), callLanguage: run.source }
-  }
-  if (!code || !summaryRun) return
-  dropSummary()
-  const el = document.createElement('section')
-  el.className = 'summary summary-enter'
-  el.lang = summaryRun.language
-  const btn = document.createElement('button')
-  btn.type = 'button'
-  btn.className = 'summary-btn'
-  btn.lang = 'en'
-  const spark = document.createElement('span')
-  spark.className = 'spark'
-  spark.setAttribute('aria-hidden', 'true')
-  spark.innerHTML = ICON_SPARK
-  const label = document.createElement('span')
-  label.className = 'summary-label'
-  label.addEventListener('animationend', () => el.classList.remove('summary-enter'), { once: true })
-  btn.append(spark, label)
-  addHaptic(btn)
-  const status = document.createElement('span')
-  status.className = 'sr-only'
-  status.setAttribute('role', 'status')
-  const skeletons = document.createElement('div')
-  skeletons.className = 'skeletons'
-  skeletons.setAttribute('aria-hidden', 'true')
-  for (const cls of ['skeleton', 'skeleton skeleton-short']) {
-    const bar = document.createElement('span')
-    bar.className = cls
-    skeletons.append(bar)
-  }
-  el.append(btn, skeletons, status)
-  const s: SummaryBlock = { el, btn, spark, label, status, skeletons, ...summaryRun, ctrl: null, done: false }
-  setSummaryBusy(s, false)
-  btn.addEventListener('click', () => void runSummary(s))
-  const stick = pinned
-  feedEl.append(el)
-  summary = s
-  if (stick) feedEl.scrollTop = feedEl.scrollHeight
-  followOpening(el)
-}
-
-/** The feed observer does not see the block open, so a pinned feed follows it frame by frame. */
-function followOpening(el: HTMLElement): void {
-  const opening = el.getAnimations()[0]
-  if (!opening) return
-  const step = (): void => {
-    if (pinned) feedEl.scrollTop = feedEl.scrollHeight
-    if (opening.playState === 'running') requestAnimationFrame(step)
-  }
-  requestAnimationFrame(step)
-}
-
-function summaryList<T>(items: T[], render: (item: T, li: HTMLElement) => void): HTMLElement {
-  const ul = document.createElement('ul')
-  for (const item of items) {
-    const li = document.createElement('li')
-    render(item, li)
-    ul.append(li)
-  }
-  return ul
-}
-
-function summaryHeading(text: string): HTMLElement {
-  const h = document.createElement('h3')
-  h.textContent = text
-  return h
-}
-
-function paintSummary(s: SummaryBlock, data: Summary, cut: boolean): void {
-  const title = document.createElement('h2')
-  title.className = 'summary-title'
-  title.tabIndex = -1
-  title.textContent = data.title
-  const meta = document.createElement('p')
-  meta.className = 'summary-meta'
-  meta.textContent = summaryMeta(s.startedAt, s.durationMs, s.language)
-  const labels = summaryLabels(s.language)
-  const out: HTMLElement[] = [title, meta]
-  if (cut) {
-    const note = document.createElement('p')
-    note.className = 'summary-meta'
-    note.textContent = labels.cut
-    out.push(note)
-  }
-  if (data.actionItems.length) {
-    const actions = summaryList(data.actionItems, (a, li) => {
-      li.textContent = a.owner ? `${a.owner}: ${a.task}` : a.task
-    })
-    out.push(summaryHeading(labels.actions), actions)
-  }
-  if (data.overview.length) out.push(summaryHeading(labels.overview), summaryList(data.overview, (t, li) => (li.textContent = t)))
-  for (const t of data.topics) out.push(summaryHeading(t.title), summaryList(t.bullets, (b, li) => (li.textContent = b)))
-  s.btn.remove()
-  s.skeletons.remove()
-  s.el.classList.add('summary-done')
-  // Only now: with the English button inside, auto would read the block as left to right.
-  s.el.dir = 'auto'
-  s.el.append(...out)
-  s.status.textContent = labels.ready
-  jumpToEl(s.el)
-  title.focus({ preventScroll: true })
-}
-
-async function runSummary(s: SummaryBlock): Promise<void> {
-  // A second tap must not start another paid call.
-  if (summary !== s || s.ctrl || s.done) return
-  const { lines, cut } = summaryLines(order.slice(s.runStart).map((u) => u.original.trim()).filter(Boolean))
+/**
+ * Asks for the notes of a saved meeting and stores them. The open view updates through the store.
+ * `isNew`: the meeting is not stored yet, and this call creates it.
+ */
+async function writeNotes(m: Meeting, opts: { isNew?: boolean; saved?: () => void } = {}): Promise<void> {
+  // The code of the moment the notes were asked for: forgetting it later aborts this run.
+  const useCode = code
+  // Busy before the first write, so a view that opens on it shows "writing" and not "try again".
   const ctrl = new AbortController()
-  s.ctrl = ctrl
-  setSummaryBusy(s, true)
-  const r = await requestSummary({ code, lines, context: loadContext(), language: s.language, callLanguage: s.callLanguage, signal: ctrl.signal })
-  // Forget code or the next Start may have removed the block while the request ran.
-  if (summary !== s) return
-  s.ctrl = null
+  summaryRuns.set(m.id, ctrl)
+  const { lines, cut } = summaryLines(m.lines.map((l) => l.original).filter(Boolean))
+  const pending = (cur: Meeting): Meeting => ({ ...cur, summaryState: { status: 'pending' } })
+  if (opts.isNew) {
+    saving = putMeeting(pending(m))
+    await saving
+  } else if (!(await updateMeeting(m.id, pending))) {
+    // Deleted meanwhile: nothing to write.
+    if (summaryRuns.get(m.id) === ctrl) summaryRuns.delete(m.id)
+    return
+  }
+  if (summaryRuns.get(m.id) !== ctrl) return
+  opts.saved?.()
+  if (ctrl.signal.aborted || !useCode) {
+    summaryRuns.delete(m.id)
+    await saveFailed(m.id, SUMMARY_FAILED_MESSAGE)
+    return
+  }
+  const r = await requestSummary({ code: useCode, lines, context: m.notes, language: m.language, callLanguage: m.callLanguage, signal: ctrl.signal })
+  // Deleted while the request ran.
+  if (summaryRuns.get(m.id) !== ctrl) return
+  summaryRuns.delete(m.id)
+  if (ctrl.signal.aborted) {
+    await saveFailed(m.id, SUMMARY_FAILED_MESSAGE)
+    return
+  }
   if (r.ok) {
-    s.done = true
-    summaryRun = null
-    paintSummary(s, r.summary, cut)
+    // The chapters or a tick may have changed the stored meeting since: build on the newest copy.
+    const done = await updateMeeting(m.id, (latest) => applySummary(latest, r.summary, cut))
+    if (done && lastMeeting?.id === m.id) lastMeeting = done
     return
   }
-  setSummaryBusy(s, false)
+  await saveFailed(m.id, r.message || SUMMARY_FAILED_MESSAGE)
   if (r.badCode) {
-    // The call is over and its text stays, so a new code can still summarize or save it.
-    code = ''
-    writeCode('')
-    setToast('', null)
-    showForm(BAD_CODE_MESSAGE)
+    badCode()
+  } else if (r.message) showTransientError(r.message)
+}
+
+/** The Worker refused the code. The saved calls stay; a new code can write their notes. */
+function badCode(): void {
+  code = ''
+  writeCode('')
+  setToast('', null)
+  showForm(BAD_CODE_MESSAGE)
+}
+
+function retryNotes(id: string): void {
+  if (summaryRuns.has(id) || !code) return
+  void getMeeting(id).then((m) => {
+    if (m && !summaryRuns.has(id)) void writeNotes(m)
+  })
+}
+
+/**
+ * After a run that heard text: save the call. Only after a tap on Stop are the notes asked for and opened.
+ * Any other end (connection lost, microphone lost, refused code) saves the call and waits for a tap on "Write notes".
+ * A silent run saves nothing.
+ */
+function finishRun(badCode: boolean, explicit: boolean): void {
+  const utterances = order.slice(runStart)
+  if (!code || !heardText(utterances)) return
+  const m = buildMeeting({
+    utterances,
+    stamps,
+    chapters,
+    startedAt,
+    durationMs: Date.now() - startedAt,
+    callLanguage: run.source,
+    language: feedLanguage(run),
+    notes: loadContext()
+  })
+  lastMeeting = m
+  if (badCode || !explicit) {
+    const message = badCode ? SUMMARY_FAILED_MESSAGE : NOTES_NOT_WRITTEN_MESSAGE
+    saving = putMeeting({ ...m, summaryState: { status: 'failed', message } })
     return
   }
-  // A disabled button drops focus: give it back so the keyboard user can try again.
-  if (document.activeElement === document.body) s.btn.focus({ preventScroll: true })
-  showTransientError(r.message)
+  void writeNotes(m, { isNew: true, saved: () => router.navigate({ kind: 'meeting', id: m.id, tab: 'notes' }) })
+}
+
+/** The write that creates the last meeting: later updates wait for it. */
+let saving: Promise<void> = Promise.resolve()
+
+/** Chapters can arrive after Stop: they go into the saved meeting too. */
+function syncChapters(): void {
+  const m = lastMeeting
+  if (!m || running || chapters.length === 0) return
+  const offsets = chapters.filter((c) => c.at >= m.startedAt).map((c) => ({ at: c.at - m.startedAt, title: c.title }))
+  if (offsets.length === m.chapters.length && offsets.every((c, i) => c.title === m.chapters[i].title)) return
+  lastMeeting = { ...m, chapters: offsets }
+  void saving.then(() => updateMeeting(m.id, (latest) => ({ ...latest, chapters: offsets })))
 }
 
 const session = createSession({
@@ -1322,6 +1286,7 @@ const session = createSession({
 })
 
 stopEl.addEventListener('click', () => {
+  explicitStop = true
   resetReplies()
   session.stop()
 })
@@ -1333,11 +1298,10 @@ toggleEl.addEventListener('click', () => {
   notice = ''
   // Before session.start() and with no await between: the microphone must be requested inside this tap.
   run = loadSettings()
+  explicitStop = false
+  lastMeeting = null
   renderEmpty()
-  // An unused or pending summary belongs to the run that is over; a finished one stays as history.
-  if (summary?.done) summary = null
-  else dropSummary()
-  // A summary read from its top left the feed unpinned, and the new text would land out of sight.
+  // A chapter jump left the feed unpinned, and the new text would land out of sight.
   jumpUntil = 0
   window.clearTimeout(jumpTimer)
   feedEl.scrollTop = feedEl.scrollHeight
@@ -1351,7 +1315,8 @@ toggleEl.addEventListener('click', () => {
 })
 
 window.addEventListener('hashchange', () => {
-  if (!takeCodeFromHash()) return
+  // The router ignores this hash; the page takes the code and keeps the current view.
+  if (!takeCodeFromHash(routeHash(route))) return
   showFeed()
   toggleEl.disabled = false
 })
@@ -1385,6 +1350,67 @@ fitInstalledApp()
 document.querySelectorAll('button').forEach(addHaptic)
 addSwitchHaptic(settingsTranslateEl)
 addVibration()
+
+/* routes and the meetings views */
+
+const desktop = window.matchMedia('(min-width: 1024px)')
+
+function syncDockInert(): void {
+  dockEl.inert = !running || (!!code && route.kind !== 'call')
+}
+
+/** Shows the view of the current route above the call screen, or none. The call screen itself is never rebuilt. */
+function syncRoute(): void {
+  const views = !!code && route.kind !== 'call'
+  if (views) closePanel()
+  appEl.dataset.route = route.kind
+  pageEl.inert = views
+  syncDockInert()
+  newMeetingEl.toggleAttribute('data-current', !!code && route.kind === 'call')
+  if (code && route.kind === 'call') newMeetingEl.setAttribute('aria-current', 'page')
+  else newMeetingEl.removeAttribute('aria-current')
+  ui.show(views ? route : null)
+}
+
+function onRoute(next: Route): void {
+  const was = route
+  route = next
+  if (was.kind === 'call' && next.kind !== 'call') routeOpener = document.activeElement as HTMLElement | null
+  syncRoute()
+  if (was.kind !== 'call' && next.kind === 'call' && code) {
+    // Back on the call screen: focus goes where the view was opened from. The menu item is gone with the menu: use the dots.
+    const back = routeOpener && routeOpener.isConnected && !menuEl.contains(routeOpener) ? routeOpener : moreEl
+    routeOpener = null
+    if (back.offsetParent !== null) back.focus({ preventScroll: true })
+  }
+}
+
+const ui = createMeetingsUi({
+  root: viewsEl,
+  sidebar: sidebarEl,
+  getCode: () => code,
+  onBadCode: badCode,
+  showError: showTransientError,
+  feedLanguage: () => feedLanguage(loadSettings()),
+  isSummaryBusy: (id) => summaryRuns.has(id),
+  onDelete: (id) => {
+    summaryRuns.get(id)?.abort()
+    summaryRuns.delete(id)
+    if (lastMeeting?.id === id) lastMeeting = null
+  },
+  retrySummary: retryNotes,
+  navigate: (r, replace) => router.navigate(r, replace),
+  back: (fallback) => router.back(fallback)
+})
+const router = startRouter(onRoute)
+
+newMeetingEl.addEventListener('click', () => {
+  if (route.kind !== 'call') router.navigate({ kind: 'call' })
+})
+document.querySelector('#sb-mark')!.append(logoIcon())
+sidebarEl.querySelectorAll<HTMLElement>('[data-icon]').forEach((el) => {
+  el.innerHTML = { plus: ICON_PLUS, calendar: ICON_CALENDAR, 'check-square': ICON_CHECK_SQUARE, spark: ICON_SPARK }[el.dataset.icon ?? ''] ?? ''
+})
 
 renderContextLink()
 if (code) showFeed()

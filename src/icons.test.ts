@@ -34,8 +34,8 @@ describe('icon pack', () => {
 
 describe('icons module', () => {
   const entries = Object.entries(icons)
-  it('exports the ten icons the app uses', () => {
-    expect(entries).toHaveLength(10)
+  it('exports the nineteen icons the app uses', () => {
+    expect(entries).toHaveLength(19)
   })
   it.each(entries)('%s is an svg string', (_name, value) => {
     expect(typeof value).toBe('string')

@@ -4,6 +4,8 @@ import { OPENCODE_CHAT_URL } from './opencode-url'
 import { buildMessages, MAX_CONTEXT_CHARS, type ChatMessage } from './suggest-prompt'
 import { buildSummaryMessages, parseSummary } from './summary-prompt'
 import { MAX_SUMMARY_BODY_BYTES, MAX_SUMMARY_CHARS, MAX_SUMMARY_LINES } from './summary-limits'
+import { buildAskMessages, cleanAnswer, type AskTurn } from './ask-prompt'
+import { MAX_ASK_BODY_BYTES, MAX_ASK_HISTORY_TURNS, MAX_ASK_QUESTION_CHARS, MAX_ASK_SOURCES_CHARS, MAX_ASK_TURN_CHARS } from './ask-limits'
 import { buildChapterMessages, parseChapters } from './chapters-prompt'
 import { MAX_CHAPTER_PARAGRAPHS, MAX_CHAPTER_PARAGRAPH_CHARS, MAX_CHAPTER_TITLE_CHARS, MAX_CHAPTER_WINDOW_CHARS } from './chapters-limits'
 
@@ -78,6 +80,7 @@ interface CallOptions {
 const SUGGEST_CALL: CallOptions = { stream: true, maxTokens: 700, temperature: 0.7 }
 const CHAPTERS_CALL: CallOptions = { stream: false, maxTokens: 400, temperature: 0.2 }
 const SUMMARY_CALL: CallOptions = { stream: false, maxTokens: 8000, temperature: 0.2 }
+const ASK_CALL: CallOptions = { stream: false, maxTokens: 600, temperature: 0.2 }
 
 function callOpenCode(key: string, messages: ChatMessage[], opts: CallOptions, withReasoning: boolean): Promise<Response> {
   return fetch(OPENCODE_CHAT_URL, {
@@ -243,6 +246,47 @@ async function handleSummary(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function handleAsk(request: Request, env: Env): Promise<Response> {
+  const read = await readModelRequest(request, env, MAX_ASK_BODY_BYTES)
+  if (read instanceof Response) return read
+  const { key, raw } = read
+  let sources: string
+  let question: string
+  const history: AskTurn[] = []
+  let language = 'en'
+  try {
+    const body = JSON.parse(raw) as { sources?: unknown; question?: unknown; history?: unknown; language?: unknown }
+    if (!body || typeof body.sources !== 'string' || typeof body.question !== 'string') throw new Error('shape')
+    sources = body.sources
+    question = body.question
+    if (!sources.trim() || sources.length > MAX_ASK_SOURCES_CHARS) throw new Error('sources')
+    if (!question.trim() || question.length > MAX_ASK_QUESTION_CHARS) throw new Error('question')
+    if (body.history !== undefined && body.history !== null) {
+      if (!Array.isArray(body.history) || body.history.length > MAX_ASK_HISTORY_TURNS) throw new Error('history')
+      for (const t of body.history as unknown[]) {
+        const turn = t as { question?: unknown; answer?: unknown } | null
+        if (!turn || typeof turn.question !== 'string' || typeof turn.answer !== 'string') throw new Error('turn')
+        if (turn.question.length > MAX_ASK_TURN_CHARS || turn.answer.length > MAX_ASK_TURN_CHARS) throw new Error('turn')
+        history.push({ question: turn.question, answer: turn.answer })
+      }
+    }
+    const lang = readLanguage(body.language)
+    if (lang === null) throw new Error('language')
+    if (lang) language = lang
+  } catch {
+    return json({ error: 'bad-request' }, 400)
+  }
+  const messages = buildAskMessages(sources, question, history, language)
+  try {
+    const content = await askForText(key, messages, ASK_CALL)
+    const answer = content ? cleanAnswer(content) : ''
+    if (!answer) return json({ error: 'upstream' }, 502)
+    return json({ answer }, 200)
+  } catch {
+    return json({ error: 'upstream' }, 502)
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url)
@@ -250,6 +294,7 @@ export default {
     if (pathname === '/api/suggest') return handleSuggest(request, env)
     if (pathname === '/api/chapters') return handleChapters(request, env)
     if (pathname === '/api/summary') return handleSummary(request, env)
+    if (pathname === '/api/ask') return handleAsk(request, env)
     return json({ error: 'not-found' }, 404)
   }
 }
