@@ -70,7 +70,7 @@ Every paragraph in the feed starts with the time it appeared (24-hour clock, to 
 
 ## Summary and transcript
 
-After Stop, a `Summarize` button appears under the text of the call. It writes notes for that call in the feed language: a title, the date and length, tasks with the people the call named, an overview, then one section for each topic. The notes stay in the feed until the page closes. A call over about two hours is summarized from its latest part, and the notes say so.
+After Stop, a `Summarize` button appears under the text of the call. It writes notes for that call in the feed language: a title; the date, start time and length (`13:41`), measured by the page; the people who took part, only when the call or the call notes named them; action items, each with an owner only when the call named one, the task in bold and a short line of context when the call gave one; an overview of the main points; then one section for each topic, with the topics taken from what was said. Key numbers are bold. The Worker drops any person or owner that is in neither the transcript nor the call notes. `Copy notes` under the notes copies them as markdown: an H1 title, Date, Duration and People, then H4 sections with `- [ ]` action items and bullets. The notes stay in the feed until the page closes. A call over about two hours is summarized from its latest part, and the notes say so.
 
 The three-dot menu has `Download transcript` when no call is running. It saves the text of the feed as a `.md` file: chapter titles, the time and text of each paragraph as shown in the feed, and the original as a quote when the call was translated. The notes from `Summarize` are not in the file. On a phone it opens the share sheet, where `Save to Files` keeps the file.
 

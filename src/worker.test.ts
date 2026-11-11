@@ -485,7 +485,7 @@ describe('worker /api/summary', () => {
   it('returns the parsed summary with a non-streaming request that carries the key only to OpenCode', async () => {
     const f = vi.fn(async () => answer())
     vi.stubGlobal('fetch', f)
-    const res = await post({ lines: ['We ship in May.', 'Okay.'], context: 'Acme pilot', model: 'evil', stream: true })
+    const res = await post({ lines: ['We ship in May.', 'Okay.'], context: 'Acme pilot with Anna', model: 'evil', stream: true })
     expect(res.status).toBe(200)
     const text = await res.text()
     expect(JSON.parse(text)).toEqual({
@@ -509,6 +509,34 @@ describe('worker /api/summary', () => {
     expect(body.reasoning_effort).toBe('none')
     expect(JSON.stringify(body.messages)).toContain('We ship in May.')
     expect(JSON.stringify(body.messages)).toContain('Acme pilot')
+  })
+
+  it('keeps people and owners the call or the notes named, and drops the ones it invented', async () => {
+    const notes = [
+      'TITLE: Trial check-in',
+      'PEOPLE: Lena Hart, Ivan Petrov, ag@example.com',
+      'ACTION: Lena Hart | Send the proposal | Plan for **2-3** users.',
+      'ACTION: Ivan Petrov | Book a follow-up |',
+      'OVERVIEW:',
+      '- The plan costs **$120** per month.'
+    ].join('\n')
+    vi.stubGlobal('fetch', vi.fn(async () => answer(notes)))
+    const res = await post({ lines: ['Lena will send the proposal for two or three users.'], context: 'Attendees: ag@example.com' })
+    expect(res.status).toBe(200)
+    const { summary } = (await res.json()) as { summary: Record<string, unknown> }
+    expect(summary.people).toEqual(['Lena Hart', 'ag@example.com'])
+    expect(summary.actionItems).toEqual([
+      { owner: 'Lena Hart', task: 'Send the proposal', details: 'Plan for **2-3** users.' },
+      { owner: '', task: 'Book a follow-up' }
+    ])
+    expect(summary.overview).toEqual(['The plan costs **$120** per month.'])
+  })
+
+  it('sends no people when the model names none the call said', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => answer('TITLE: T\nPEOPLE: Mallory\nOVERVIEW:\n- Short.')))
+    const res = await post({ lines: ['Hello there.'] })
+    const { summary } = (await res.json()) as { summary: Record<string, unknown> }
+    expect('people' in summary).toBe(false)
   })
 
   it('retries once without reasoning_effort after a 400', async () => {

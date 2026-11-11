@@ -5,7 +5,9 @@ import {
   requestSummary,
   summaryLabels,
   summaryLines,
-  summaryMeta,
+  summaryDate,
+  summaryDetails,
+  summaryDuration,
   SUMMARY_FAILED_MESSAGE,
   SUMMARY_NOT_SET_UP_MESSAGE,
   SUMMARY_TIMEOUT_MESSAGE,
@@ -155,36 +157,49 @@ describe('requestSummary', () => {
   })
 })
 
-describe('summaryMeta', () => {
-  const at = new Date(2026, 10, 6, 12, 0).getTime()
-  it('gives the date and minutes', () => {
-    const m = summaryMeta(at, 12 * 60_000, 'ru')
-    expect(m).toMatch(/^6 ноября 2026 · 12 мин$/)
+describe('summaryDate and summaryDuration', () => {
+  const at = new Date(2026, 10, 10, 11, 0).getTime()
+  it('gives the weekday, date and start time', () => {
+    expect(summaryDate(at, 'en')).toBe('Tuesday, November 10, 2026 at 11:00 AM')
+    expect(summaryDate(at, 'ru')).toBe('вторник, 10 ноября 2026 в 11:00')
   })
-  it('says less than a minute under 60 seconds', () => {
-    expect(summaryMeta(at, 59_000, 'ru')).toBe('6 ноября 2026 · меньше минуты')
+  it('uses English for every language but Russian', () => {
+    expect(summaryDate(at, 'de')).toBe(summaryDate(at, 'en'))
   })
-  it('rounds up to one minute at the boundary', () => {
-    expect(summaryMeta(at, 60_000, 'ru')).toBe('6 ноября 2026 · 1 мин')
+  it('gives minutes and seconds, and hours past an hour', () => {
+    expect(summaryDuration(821_000)).toBe('13:41')
+    expect(summaryDuration(59_400)).toBe('0:59')
+    expect(summaryDuration(3_725_000)).toBe('1:02:05')
+    expect(summaryDuration(-5)).toBe('0:00')
   })
 })
 
-describe('summaryMeta in other languages', () => {
-  const at = new Date(2026, 10, 6, 12, 0).getTime()
-  it('uses English for every language but Russian', () => {
-    expect(summaryMeta(at, 12 * 60_000, 'de')).toBe('November 6, 2026 · 12 min')
-    expect(summaryMeta(at, 59_000, 'fr')).toBe('November 6, 2026 · less than a minute')
-    expect(summaryMeta(at, 60_000, 'en')).toBe('November 6, 2026 · 1 min')
+describe('summaryDetails', () => {
+  const at = new Date(2026, 10, 10, 11, 0).getTime()
+  it('has Date and Duration from the page, and People only when the call named someone', () => {
+    expect(summaryDetails({}, at, 821_000, 'en')).toEqual([
+      { label: 'Date', value: 'Tuesday, November 10, 2026 at 11:00 AM' },
+      { label: 'Duration', value: '13:41' }
+    ])
+    expect(summaryDetails({ people: [] }, at, 821_000, 'en')).toHaveLength(2)
+    expect(summaryDetails({ people: ['Anna', ' ', 'Boris'] }, at, 821_000, 'ru')).toEqual([
+      { label: 'Дата', value: 'вторник, 10 ноября 2026 в 11:00' },
+      { label: 'Длительность', value: '13:41' },
+      { label: 'Участники', value: 'Anna, Boris' }
+    ])
   })
 })
 
 describe('summaryLabels', () => {
   it('gives Russian headings for ru', () => {
-    expect(summaryLabels('ru')).toEqual({ actions: 'Задачи', overview: 'Обзор', cut: 'Итоги только по последней части разговора.', ready: 'Итоги готовы' })
+    const ru = summaryLabels('ru')
+    expect(ru.actions).toBe('Задачи')
+    expect(ru.overview).toBe('Обзор')
+    expect(ru.cut).toBe('Итоги только по последней части разговора.')
+    expect(ru.ready).toBe('Итоги готовы')
   })
   it('gives English headings for everything else', () => {
-    const en = { actions: 'Action items', overview: 'Overview', cut: 'This summary covers only the last part of the call.', ready: 'Summary ready' }
-    expect(summaryLabels('de')).toEqual(en)
-    expect(summaryLabels('en')).toEqual(en)
+    expect(summaryLabels('de')).toEqual(summaryLabels('en'))
+    expect(summaryLabels('en')).toMatchObject({ actions: 'Action items', overview: 'Overview', date: 'Date', duration: 'Duration', people: 'People' })
   })
 })

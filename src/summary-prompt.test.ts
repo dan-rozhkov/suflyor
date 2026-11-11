@@ -32,8 +32,8 @@ describe('buildSummaryMessages languages', () => {
     const [sys] = buildSummaryMessages(['a'], '')
     expect(sys.content).toContain('It is mostly English')
     expect(sys.content).toContain('Write ALL output in Russian. Keep product names and proper names as they were said, and never add Russian endings to a name in Latin letters.')
-    expect(sys.content).not.toContain('double asterisks')
-    expect(sys.content).toContain('2 to 5 word Russian noun phrases. Do not use generic words such as "Обсуждение".')
+    expect(sys.content).toContain('wrap the key numbers (amounts, prices, counts, limits, percentages) in double asterisks, for example **120 долларов**')
+    expect(sys.content).toContain('2 to 5 word Russian noun phrases that say what the topic is about. Do not use generic words such as "Обсуждение".')
     expect(buildSummaryMessages(['a'], '', { callLanguage: 'en', language: 'ru' })[0]).toEqual(sys)
   })
 
@@ -42,8 +42,8 @@ describe('buildSummaryMessages languages', () => {
     expect(sys.content).toContain('It is mostly German')
     expect(sys.content).toContain('Write ALL output in French. Keep product names and proper names as they were said.')
     expect(sys.content).not.toContain('Russian endings')
-    expect(sys.content).not.toContain('double asterisks')
-    expect(sys.content).toContain('2 to 5 word French noun phrases. Do not use generic words such as "Discussion", or its equivalent.')
+    expect(sys.content).toContain('for example **$120** per month')
+    expect(sys.content).toContain('2 to 5 word French noun phrases that say what the topic is about. Do not use generic words such as "Discussion", or its equivalent.')
     expect(sys.content).not.toMatch(/Russian|Обсуждение|ноября/)
     expect(sys.content).toContain('TITLE: <title>')
   })
@@ -124,10 +124,32 @@ describe('parseSummary', () => {
     expect(parseSummary('- Кратко.')!.title).toBe('Итоги разговора')
   })
 
-  it('drops every asterisk the model still writes', () => {
-    const s = parseSummary('ACTION: **Анна** | Ответить до **пятницы**\nOVERVIEW:\n- Пробный период продлён на **2** недели\n- Звёздочка * и *курсив*\n- Сломанная **пара')!
-    expect(s.actionItems).toEqual([{ owner: 'Анна', task: 'Ответить до пятницы' }])
-    expect(s.overview).toEqual(['Пробный период продлён на 2 недели', 'Звёздочка и курсив', 'Сломанная пара'])
+  it('keeps paired bold marks in bullets and context, and drops them everywhere else', () => {
+    const s = parseSummary(
+      [
+        'TITLE: **Пилот** на **2** недели',
+        'PEOPLE: **Анна**, Борис',
+        'ACTION: **Анна** | Ответить до **пятницы** | Бюджет ***30 000*** рублей',
+        'OVERVIEW:',
+        '- Пробный период продлён на **2** недели',
+        '- Звёздочка * и *курсив*',
+        '- Сломанная **пара',
+        '- Пустая пара **** остаётся текстом',
+        'TOPIC: **Цена**',
+        '- Цена **120** долларов, лимит **10** человек'
+      ].join('\n')
+    )!
+    expect(s.title).toBe('Пилот на 2 недели')
+    expect(s.people).toEqual(['Анна', 'Борис'])
+    expect(s.actionItems).toEqual([{ owner: 'Анна', task: 'Ответить до пятницы', details: 'Бюджет **30\u00a0000** рублей' }])
+    expect(s.overview).toEqual(['Пробный период продлён на **2** недели', 'Звёздочка и курсив', 'Сломанная пара', 'Пустая пара остаётся текстом'])
+    expect(s.topics).toEqual([{ title: 'Цена', bullets: ['Цена **120** долларов, лимит **10** человек'] }])
+  })
+
+  it('never leaves a broken mark when the cap cuts a pair', () => {
+    const s = parseSummary(`OVERVIEW:\n- ${'я'.repeat(395)} **12345**`)!
+    expect(s.overview[0]).not.toContain('*')
+    expect(s.overview[0].length).toBeLessThanOrEqual(400)
   })
 
   it('keeps a spaced number on one line', () => {

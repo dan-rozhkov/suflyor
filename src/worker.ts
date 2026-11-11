@@ -2,7 +2,7 @@ import { isLanguage } from './languages'
 import { SONIOX_TEMP_KEY_URL } from './soniox-url'
 import { OPENCODE_CHAT_URL } from './opencode-url'
 import { buildMessages, MAX_CONTEXT_CHARS, type ChatMessage } from './suggest-prompt'
-import { buildSummaryMessages, parseSummary } from './summary-prompt'
+import { buildSummaryMessages, groundSummary, parseSummary } from './summary-prompt'
 import { MAX_SUMMARY_BODY_BYTES, MAX_SUMMARY_CHARS, MAX_SUMMARY_LINES } from './summary-limits'
 import { buildAskMessages, cleanAnswer, type AskTurn } from './ask-prompt'
 import { MAX_ASK_BODY_BYTES, MAX_ASK_HISTORY_TURNS, MAX_ASK_QUESTION_CHARS, MAX_ASK_SOURCES_CHARS, MAX_ASK_TURN_CHARS } from './ask-limits'
@@ -238,9 +238,10 @@ async function handleSummary(request: Request, env: Env): Promise<Response> {
   try {
     const content = await askForText(key, messages, SUMMARY_CALL)
     if (!content) return json({ error: 'upstream' }, 502)
-    const summary = parseSummary(content, languages.language)
-    if (!summary) return json({ error: 'upstream' }, 502)
-    return json({ summary }, 200)
+    const parsed = parseSummary(content, languages.language)
+    if (!parsed) return json({ error: 'upstream' }, 502)
+    // People and owners only as the call or the call notes named them.
+    return json({ summary: groundSummary(parsed, [...lines, context]) }, 200)
   } catch {
     return json({ error: 'upstream' }, 502)
   }
