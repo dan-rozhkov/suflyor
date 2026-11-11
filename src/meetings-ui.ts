@@ -8,6 +8,7 @@ import {
   formatWhen,
   groupByDate,
   meetingSources,
+  meetingSummary,
   NOTES_NOT_WRITTEN_MESSAGE,
   openActionCount,
   type Meeting
@@ -16,9 +17,11 @@ import { chapterLineIndex, initials, languagePair, lastTurns, lineText, rowSub }
 import { requestAnswer } from './ask'
 import type { AskTurn } from './ask-prompt'
 import { MAX_ASK_QUESTION_CHARS } from './ask-limits'
-import { summaryLabels } from './summary'
+import { boldParts, summaryLabels, summaryMarkdown } from './summary'
+import { addHaptic } from './haptics'
+import { copyToClipboard } from './dom'
 import { CALL_ROUTE, parentRoute, parseRoute, routeHash, type MeetingTab, type Route } from './router'
-import { ICON_ARROW_LEFT, ICON_ARROW_RIGHT, ICON_ARROW_UP, ICON_CALENDAR, ICON_CHECK, ICON_CHECK_SQUARE, ICON_CLOSE, ICON_CLOCK, ICON_TRANSLATE } from './icons'
+import { ICON_ARROW_LEFT, ICON_ARROW_RIGHT, ICON_ARROW_UP, ICON_CALENDAR, ICON_CHECK, ICON_CHECK_SQUARE, ICON_CLOSE, ICON_CLOCK, ICON_COPY, ICON_TRANSLATE } from './icons'
 
 export interface UiDeps {
   /** Holds the views and the Ask sheet. */
@@ -212,11 +215,12 @@ export function createMeetingsUi(deps: UiDeps): MeetingsUi {
         for (const { meeting, action } of list) {
           const task = h('div', { class: 'todo-text', dir: 'auto' })
           task.textContent = action.task
+          const details = action.details?.trim() ? withBold(h('div', { class: 'todo-details', dir: 'auto' }), action.details) : null
           const src = navLink({ kind: 'meeting', id: meeting.id, tab: 'notes' }, 'task-src', iconEl(ICON_CALENDAR))
           const srcName = h('span', { dir: 'auto' })
           srcName.textContent = meeting.title
           src.append(srcName)
-          ul.append(h('li', { class: `todo${action.done ? ' is-done' : ''}` }, checkButton(meeting, action.id, action.done, action.task), h('div', { class: 'todo-main' }, task, src), ownerBadge(action.owner)))
+          ul.append(h('li', { class: `todo${action.done ? ' is-done' : ''}` }, checkButton(meeting, action.id, action.done, action.task), h('div', { class: 'todo-main' }, task, details, src), ownerBadge(action.owner)))
         }
         col.append(ul)
       }
@@ -241,14 +245,44 @@ export function createMeetingsUi(deps: UiDeps): MeetingsUi {
     return tabs
   }
 
+  /** Model text with `**` marks: the marked parts become <strong>, everything is set as text. */
+  function withBold(el: HTMLElement, text: string): HTMLElement {
+    for (const p of boldParts(text)) {
+      if (p.bold) {
+        const strong = document.createElement('strong')
+        strong.textContent = p.text
+        el.append(strong)
+      } else el.append(p.text)
+    }
+    return el
+  }
+
   function bullets(items: string[]): HTMLElement {
     const ul = h('ul', { class: 'bullets' })
-    for (const t of items) {
-      const li = h('li', { dir: 'auto' })
-      li.textContent = t
-      ul.append(li)
-    }
+    for (const t of items) ul.append(withBold(h('li', { dir: 'auto' }), t))
     return ul
+  }
+
+  function copyButton(m: Meeting): HTMLElement {
+    const labels = summaryLabels(m.language)
+    const b = h('button', { type: 'button', class: 'copy-notes' }, iconEl(ICON_COPY), h('span', {}, labels.copy))
+    const label = b.lastElementChild as HTMLElement
+    let timer = 0
+    b.addEventListener('click', () => {
+      const st = m.summaryState
+      const text = summaryMarkdown({ summary: meetingSummary(m), startedAt: m.startedAt, durationMs: m.durationMs, language: m.language, cut: st.status === 'ready' && st.cut })
+      const done = (ok: boolean): void => {
+        if (!ok) return deps.showError(labels.copyFailed)
+        label.textContent = labels.copied
+        window.clearTimeout(timer)
+        timer = window.setTimeout(() => {
+          label.textContent = labels.copy
+        }, 1500)
+      }
+      void copyToClipboard(text).then(done)
+    })
+    addHaptic(b as HTMLButtonElement)
+    return b
   }
 
   function notesBody(m: Meeting): HTMLElement {
@@ -270,15 +304,24 @@ export function createMeetingsUi(deps: UiDeps): MeetingsUi {
       body.append(h('p', { class: 'state-text' }, 'This meeting has no notes. The transcript is in the other tab.'))
     } else {
       const labels = summaryLabels(m.language)
+      const people = (m.people ?? []).filter((p) => p.trim())
+      if (people.length) {
+        const names = h('span', { class: 'people-names', dir: 'auto' })
+        names.textContent = people.join(', ')
+        body.append(h('p', { class: 'people' }, h('span', { class: 'people-label' }, labels.people), names))
+      }
       if (st.cut) body.append(h('p', { class: 'note-cut' }, labels.cut))
       if (m.actions.length) {
         const ul = h('ul', { class: 'todos' })
         for (const a of m.actions) {
+          const plainTask = a.task.replace(/\*\*/g, '')
           const task = h('div', { class: 'todo-text', dir: 'auto' })
-          task.textContent = a.task
-          ul.append(h('li', { class: `todo${a.done ? ' is-done' : ''}` }, checkButton(m, a.id, a.done, a.task), h('div', { class: 'todo-main' }, task), ownerBadge(a.owner)))
+          task.textContent = plainTask
+          const main = h('div', { class: 'todo-main' }, task)
+          if (a.details?.trim()) main.append(withBold(h('div', { class: 'todo-details', dir: 'auto' }), a.details))
+          ul.append(h('li', { class: `todo${a.done ? ' is-done' : ''}` }, checkButton(m, a.id, a.done, plainTask), main, ownerBadge(a.owner)))
         }
-        body.append(h('h2', { class: 'sec' }, labels.actions), ul)
+        body.append(h('h2', { class: 'sec sec-small' }, labels.actions), ul)
       }
       if (m.overview.length) body.append(h('h2', { class: 'sec' }, labels.overview), bullets(m.overview))
       for (const t of m.topics) {
@@ -287,6 +330,7 @@ export function createMeetingsUi(deps: UiDeps): MeetingsUi {
         body.append(heading, bullets(t.bullets))
       }
       if (!m.actions.length && !m.overview.length && !m.topics.length) body.append(h('p', { class: 'state-text' }, 'The call was too short for notes.'))
+      else body.append(copyButton(m))
     }
     return body
   }

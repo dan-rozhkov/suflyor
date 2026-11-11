@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { summaryMarkdown } from './summary'
+import type { Summary } from './types'
 import {
   allActions, allMeetingsSources, applySummary, fallbackTitle, formatDuration, formatOffset,
-  formatWhen, groupByDate, meetingSources, newMeetingId, openActionCount, transcriptText,
+  formatWhen, groupByDate, meetingSources, meetingSummary, newMeetingId, openActionCount, transcriptText,
   type Meeting,
 } from './meetings'
 
@@ -144,5 +146,68 @@ describe('sources', () => {
     expect(s).not.toContain('Hello')
     const many = Array.from({ length: 2000 }, (_, i) => mk(`x${i}`, at(2026, 1, 1) + i, { title: 'T'.repeat(100) }))
     expect(allMeetingsSources(many).length).toBeLessThanOrEqual(60_000)
+  })
+})
+
+describe('meetingSummary', () => {
+  const notes: Summary = {
+    title: 'Nimbus Notes | Check-in',
+    people: ['Anna', 'Lena Hart'],
+    actionItems: [
+      { owner: 'Anna', task: 'Send the **3** quotes', details: 'Fjord Logistics wants them by **Friday**.' },
+      { owner: '', task: 'Book a room' },
+    ],
+    overview: ['Budget is **12 000**.'],
+    topics: [{ title: 'Pricing', bullets: ['Two plans'] }],
+  }
+
+  it('keeps people and details through Summary, Meeting, Summary', () => {
+    const m = applySummary(mk('m1', NOW), notes, false)
+    expect(m.people).toEqual(['Anna', 'Lena Hart'])
+    expect(m.actions[0].details).toBe('Fjord Logistics wants them by **Friday**.')
+    expect(m.actions[1].details).toBeUndefined()
+    expect(meetingSummary(m)).toEqual(notes)
+  })
+
+  it('converts an old meeting without people and details', () => {
+    const old = mk('m2', NOW, {
+      title: 'Old call',
+      actions: [{ id: 'm2-a0', task: 'Send plan', owner: 'Anna', done: true }],
+      overview: ['Short'],
+    })
+    expect(meetingSummary(old)).toEqual({
+      title: 'Old call',
+      actionItems: [{ owner: 'Anna', task: 'Send plan', done: true }],
+      overview: ['Short'],
+      topics: [],
+    })
+  })
+
+  it('gives markdown with the title, Action Items and Overview', () => {
+    const m = applySummary(mk('m1', NOW), notes, false)
+    const md = summaryMarkdown({ summary: meetingSummary(m), startedAt: m.startedAt, durationMs: m.durationMs, language: 'en', cut: false })
+    expect(md.startsWith('# Nimbus Notes | Check-in')).toBe(true)
+    expect(md).toContain('#### Action Items')
+    expect(md).toContain('## Overview')
+    expect(md).toContain('Lena Hart')
+  })
+
+  it('copies a ticked task as done', () => {
+    const m = applySummary(mk('m1', NOW), notes, false)
+    m.actions[1].done = true
+    const md = summaryMarkdown({ summary: meetingSummary(m), startedAt: m.startedAt, durationMs: m.durationMs, language: 'en' })
+    expect(md).toContain('- [ ] Anna - **Send the 3 quotes**')
+    expect(md).toContain('- [x] **Book a room**')
+  })
+
+  it('gives Ask the people the notes name', () => {
+    expect(meetingSources(applySummary(mk('m1', NOW), notes, false))).toContain('People: Anna, Lena Hart')
+  })
+
+  it('adds task details to the Ask sources without marks', () => {
+    const m = applySummary(mk('m1', NOW), notes, false)
+    const src = meetingSources(m)
+    expect(src).toContain('Fjord Logistics wants them by Friday.')
+    expect(src).not.toContain('**')
   })
 })

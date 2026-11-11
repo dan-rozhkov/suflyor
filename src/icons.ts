@@ -8,6 +8,7 @@ import checkSquare from './icons/check-square.svg?raw'
 import chevronDown from './icons/chevron-down.svg?raw'
 import clock from './icons/clock.svg?raw'
 import close from './icons/close.svg?raw'
+import copy from './icons/copy.svg?raw'
 import more from './icons/more.svg?raw'
 import paperclip from './icons/paperclip.svg?raw'
 import plus from './icons/plus.svg?raw'
@@ -26,6 +27,7 @@ export const ICON_SPARK = spark.trim()
 export const ICON_CHECK = check.trim()
 export const ICON_CHEVRON_DOWN = chevronDown.trim()
 export const ICON_CLOSE = close.trim()
+export const ICON_COPY = copy.trim()
 export const ICON_MORE = more.trim()
 export const ICON_PAPERCLIP = paperclip.trim()
 export const ICON_ALERT = alert.trim()

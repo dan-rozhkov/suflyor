@@ -326,6 +326,61 @@
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
+.sec-small {
+  font-size: 16px;
+  letter-spacing: 0;
+}
+.people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-2);
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.people-label {
+  font-weight: 700;
+}
+.people-names {
+  overflow-wrap: anywhere;
+}
+.todo-details {
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.todo-details strong {
+  font-weight: 700;
+  color: var(--text);
+}
+.todo.is-done .todo-details,
+.todo.is-done .todo-details strong {
+  color: var(--text-faint);
+}
+.bullets strong {
+  font-weight: 800;
+}
+.copy-notes {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.copy-notes svg {
+  width: 16px;
+  height: 16px;
+}
 .notes > .state-text {
   margin-top: var(--space-4);
 }
@@ -1019,6 +1074,9 @@ textarea.composer-input {
   .sec {
     margin-top: 28px;
     font-size: 15px;
+  }
+  .sec-small {
+    font-size: 13px;
   }
   .bullets li {
     padding: 4px 0 4px 16px;

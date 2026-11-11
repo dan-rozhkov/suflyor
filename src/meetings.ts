@@ -20,6 +20,8 @@ export interface MeetingAction {
   id: string
   task: string
   owner: string
+  /** Context for the task. May hold `**` marks. Absent in meetings saved before it existed. */
+  details?: string
   done: boolean
 }
 
@@ -38,6 +40,8 @@ export interface Meeting {
   language: string
   /** The summary title, or a fallback like "Call at 14:05" until the summary is ready. */
   title: string
+  /** People the call named. Absent when none, and in meetings saved before it existed. */
+  people?: string[]
   /** The call notes the user typed. */
   notes: string
   lines: MeetingLine[]
@@ -73,15 +77,29 @@ export function applySummary(m: Meeting, s: Summary, cut: boolean): Meeting {
   return {
     ...m,
     title: s.title.trim() || m.title,
+    people: s.people?.some((p) => p.trim()) ? s.people.filter((p) => p.trim()) : undefined,
     actions: s.actionItems.map((a, i) => ({
       id: `${m.id}-a${i}`,
       task: a.task,
       owner: a.owner,
+      ...(a.details?.trim() ? { details: a.details } : {}),
       done: false,
     })),
     overview: [...s.overview],
     topics: s.topics.map((t) => ({ title: t.title, bullets: [...t.bullets] })),
     summaryState: { status: 'ready', cut },
+  }
+}
+
+/** The notes of a meeting as a Summary again, for the copied markdown, with the tasks already ticked marked done. */
+export function meetingSummary(m: Meeting): Summary {
+  const people = (m.people ?? []).filter((p) => p.trim())
+  return {
+    title: m.title,
+    ...(people.length ? { people } : {}),
+    actionItems: m.actions.map((a) => ({ owner: a.owner, task: a.task, ...(a.details?.trim() ? { details: a.details } : {}), ...(a.done ? { done: true } : {}) })),
+    overview: [...m.overview],
+    topics: m.topics.map((t) => ({ title: t.title, bullets: [...t.bullets] })),
   }
 }
 
@@ -166,27 +184,32 @@ const clock = (t: number): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const plain = (t: string): string => t.replace(/\*\*/g, '')
+
 function notesBlock(m: Meeting): string[] {
   const out: string[] = []
   if (m.actions.length) {
     out.push('Action items:')
     for (const a of m.actions) {
-      out.push(`- ${a.owner ? `${a.owner}: ` : ''}${a.task}${a.done ? ' (done)' : ''}`)
+      out.push(`- ${a.owner ? `${a.owner}: ` : ''}${plain(a.task)}${a.done ? ' (done)' : ''}`)
+      if (a.details?.trim()) out.push(`  ${plain(a.details)}`)
     }
   }
   if (m.overview.length) {
     out.push('Overview:')
-    for (const o of m.overview) out.push(`- ${o}`)
+    for (const o of m.overview) out.push(`- ${plain(o)}`)
   }
   for (const t of m.topics) {
     out.push(`${t.title}:`)
-    for (const b of t.bullets) out.push(`- ${b}`)
+    for (const b of t.bullets) out.push(`- ${plain(b)}`)
   }
   return out
 }
 
 function header(m: Meeting): string[] {
-  return [`Title: ${m.title}`, `Date: ${clock(m.startedAt)}`, `Duration: ${formatDuration(m.durationMs)}`]
+  const head = [`Title: ${m.title}`, `Date: ${clock(m.startedAt)}`, `Duration: ${formatDuration(m.durationMs)}`]
+  if (m.people?.length) head.push(`People: ${m.people.join(', ')}`)
+  return head
 }
 
 export function transcriptLine(l: MeetingLine): string {

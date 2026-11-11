@@ -214,7 +214,7 @@ export function summaryMarkdown({ summary, startedAt, durationMs, language, cut 
     const items = summary.actionItems.map((a) => {
       const owner = oneLine(a.owner)
       const task = `**${oneLine(a.task).replace(/\*+/g, '')}**`
-      const line = `- [ ] ${owner ? `${owner} - ` : ''}${task}`
+      const line = `- [${a.done ? 'x' : ' '}] ${owner ? `${owner} - ` : ''}${task}`
       return a.details?.trim() ? `${line}\n${oneLine(a.details)}` : line
     })
     sections.push([`#### ${labels.actions}`, ...items].join('\n'))

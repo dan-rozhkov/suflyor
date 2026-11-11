@@ -23,3 +23,27 @@ export function iconEl(svg: string, cls = ''): HTMLElement {
   s.innerHTML = svg
   return s
 }
+
+/**
+ * Copies text, called inside the tap: Safari allows the clipboard only during a user gesture, so the textarea
+ * fallback runs only when the async API is missing, never after it fails.
+ */
+export function copyToClipboard(text: string): Promise<boolean> {
+  const write = navigator.clipboard?.writeText(text)
+  if (write) return write.then(() => true, () => false)
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+  document.body.append(ta)
+  ta.focus()
+  ta.select()
+  ta.setSelectionRange(0, text.length)
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  ta.remove()
+  return Promise.resolve(ok)
+}

@@ -24,6 +24,8 @@ export interface SummaryAction {
   task: string
   /** Why, how, a condition or a deadline, only as said on the call. May hold `**` marks around numbers. Absent in notes made before it existed. */
   details?: string
+  /** Ticked on the page; only the copied notes read it. The Worker never sends it. */
+  done?: boolean
 }
 
 export interface SummaryTopic {
